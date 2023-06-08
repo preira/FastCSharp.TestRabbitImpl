@@ -1,0 +1,19 @@
+{
+    "RabbitSubscriberConfig" : 
+    {
+        "HostName"  : "localhost",
+        "Port"      : 5672,
+        "UserName"  : "guest",
+        "Password"  : "guest",
+        "HeartbeatTimeout"  : "00:00:20",
+        "Queues"    :
+        {
+            "TASK_QUEUE"    : 
+            {
+                "Name":"test.direct.q",
+                "PrefecthCount":1,
+                "PrefecthSize":0
+            }            
+        }
+    }
+}

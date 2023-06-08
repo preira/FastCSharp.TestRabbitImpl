@@ -1,0 +1,19 @@
+{
+    "RabbitPublisherConfig" : {
+        "HostName" : "localhost",
+        "Port" : 5672,
+        "UserName"  : "guest",
+        "Password"  : "guest",
+        "Timeout" : "00:00:10",
+        "Exchanges" : 
+        {
+            "TEST_EXCHANGE" : {
+                "Name" : "test.direct.exchange.v-1.0",
+                "Type" : "direct",
+                "NamedRoutingKeys" : {
+                    "TEST_QUEUE" : "test.direct.q"
+                }
+            }
+        }        
+    }
+}
