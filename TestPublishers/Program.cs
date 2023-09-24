@@ -1,9 +1,7 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Net.Mime;
-using System.Text.Json;
 using FastCSharp.RabbitPublisher.Test;
-using Microsoft.AspNetCore.Mvc.Formatters;
 using Microsoft.OpenApi.Models;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -77,11 +75,11 @@ static Func<LoadRequest, IResult> Load()
         IRunner<Message> runner;
         if(request.IsBatch)
         {
-            runner = new BatchRunner<Message>($"rabbitsettings.VHOST.json");
+            runner = new BatchRunner<Message>(request.VHost);
         }
         else
         {
-            runner = new Runner<Message>($"rabbitsettings.VHOST.json");
+            runner = new Runner<Message>(request.VHost);
         }
 
         ITestPublisher<Message> publisher;

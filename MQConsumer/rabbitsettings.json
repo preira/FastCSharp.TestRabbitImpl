@@ -1,6 +1,7 @@
 {
     "RabbitSubscriberConfig" : 
     {
+        "ClientName" : "TestSubscriber-Cluster",
         "HostName"  : "localhost",
         "Port"      : 5672,
         "UserName"  : "guest",

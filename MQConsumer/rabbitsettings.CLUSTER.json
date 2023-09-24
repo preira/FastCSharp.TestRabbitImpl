@@ -6,7 +6,6 @@
             {"HostName":"localhost", "Port":5671},
             {"HostName":"localhost", "Port":5672}
         ],
-        "VirtualHost": "test-vhost",
         "UserName"  : "guest",
         "Password"  : "guest",
         "HeartbeatTimeout"  : "00:00:20",

@@ -3,10 +3,10 @@ using Microsoft.Extensions.Configuration;
 using FastCSharp.RabbitSubscriber;
 
 ILoggerFactory loggerFactory = LoggerFactory.Create(builder => builder.AddConsole());
-IConfiguration defaultConfiguration = new ConfigurationBuilder()
-    .AddJsonFile("rabbitsettings.json", true, true)
-    .Build();
 var logger = loggerFactory.CreateLogger("Program");
+IConfiguration defaultConfiguration = new ConfigurationBuilder()
+    .AddJsonFile("rabbitsettings.CLUSTER.json", true, true)
+    .Build();
 
 logger.LogInformation("Starting RabbitSubscribers for default vhost");
 var subscriberFactory = new RabbitSubscriberFactory(defaultConfiguration, loggerFactory);
@@ -51,7 +51,7 @@ IConfiguration vhostConfiguration = new ConfigurationBuilder()
     .AddJsonFile("rabbitsettings.VHOST.json", true, true)
     .Build();
 
-var vHostSubscriberFactory = new RabbitSubscriberFactory(defaultConfiguration, loggerFactory);
+var vHostSubscriberFactory = new RabbitSubscriberFactory(vhostConfiguration, loggerFactory);
 using var vHostDirectSubscriber = vHostSubscriberFactory.NewSubscriber<Message>("DIRECT_QUEUE");
 vHostDirectSubscriber.Register(async (message) =>
 {
@@ -81,7 +81,7 @@ vHostFanoutSubscriber1.Register(async (message) =>
 });
 
 using var vHostFanoutSubscriber2 = vHostSubscriberFactory.NewSubscriber<Message>("FANOUT_QUEUE.2");
-fanoutSubscriber2.Register(async (message) =>
+vHostFanoutSubscriber2.Register(async (message) =>
 {
     logger.LogInformation($"Received {message?.Text}");
     return await Task.Run<bool>(()=>true);
