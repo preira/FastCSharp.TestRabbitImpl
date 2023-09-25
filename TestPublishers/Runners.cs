@@ -5,7 +5,7 @@ public interface ITestPublisher<T> : IPublisher<T>, IBatchPublisher<T>
 {
 }
 
-public interface IRunner<T>
+public interface IRunner<T> : IDisposable
 {
     ITestPublisher<T> TopicPublisher1 { get; set; }
     ITestPublisher<T> TopicPublisher2 { get; set; }
@@ -77,6 +77,11 @@ public class BatchTestPublisher<T> : ITestPublisher<T>
 
 public class Runner<T> : IRunner<T>
 {
+    private bool disposedValue;
+
+    IPublisherFactory TopicFactory { get; set; }
+    IPublisherFactory FanoutFactory { get; set; }
+    IPublisherFactory DirectFactory { get; set; }
     public ITestPublisher<T> TopicPublisher1 { get; set; }
     public ITestPublisher<T> TopicPublisher2 { get; set; }
     public ITestPublisher<T> FanoutPublisher { get; set; }
@@ -86,16 +91,16 @@ public class Runner<T> : IRunner<T>
         IConfiguration configuration = new ConfigurationBuilder()
             .AddJsonFile(config, true, true)
             .Build();
-        ILoggerFactory loggerFactory = LoggerFactory.Create(builder => builder.AddConsole());
-        IPublisherFactory topicFactory = new RabbitTopicPublisherFactory(configuration, loggerFactory);
-        TopicPublisher1 = new SingleMsgTestPublisher<T>(topicFactory.NewPublisher<T>("TOPIC_EXCHANGE", "topic.1"));
-        TopicPublisher2 = new SingleMsgTestPublisher<T>(topicFactory.NewPublisher<T>("TOPIC_EXCHANGE", "topic.2"));
+        using ILoggerFactory loggerFactory = LoggerFactory.Create(builder => builder.AddConsole());
+        TopicFactory = new RabbitTopicPublisherFactory(configuration, loggerFactory);
+        TopicPublisher1 = new SingleMsgTestPublisher<T>(TopicFactory.NewPublisher<T>("TOPIC_EXCHANGE", "topic.1"));
+        TopicPublisher2 = new SingleMsgTestPublisher<T>(TopicFactory.NewPublisher<T>("TOPIC_EXCHANGE", "topic.2"));
 
-        IPublisherFactory fanoutFactory = new RabbitFanoutPublisherFactory(configuration, loggerFactory);
-        FanoutPublisher = new SingleMsgTestPublisher<T>(fanoutFactory.NewPublisher<T>("FANOUT_EXCHANGE"));
+        FanoutFactory = new RabbitFanoutPublisherFactory(configuration, loggerFactory);
+        FanoutPublisher = new SingleMsgTestPublisher<T>(FanoutFactory.NewPublisher<T>("FANOUT_EXCHANGE"));
 
-        IPublisherFactory directFactory = new RabbitDirectPublisherFactory(configuration, loggerFactory);
-        DirectPublisher = new SingleMsgTestPublisher<T>(directFactory.NewPublisher<T>("DIRECT_EXCHANGE", "TEST_QUEUE"));
+        DirectFactory = new RabbitDirectPublisherFactory(configuration, loggerFactory);
+        DirectPublisher = new SingleMsgTestPublisher<T>(DirectFactory.NewPublisher<T>("DIRECT_EXCHANGE", "TEST_QUEUE"));
 
         Console.WriteLine($"ThreadPool initial size {ThreadPool.ThreadCount} >> Runner Initialized!");
     }
@@ -115,9 +120,42 @@ public class Runner<T> : IRunner<T>
     {
         throw new NotImplementedException();
     }
+
+    protected virtual void Dispose(bool disposing)
+    {
+        if (!disposedValue)
+        {
+            if (disposing)
+            {
+                // dispose managed state (managed objects)
+                TopicPublisher1.Dispose();
+                TopicPublisher2.Dispose();
+                FanoutPublisher.Dispose();
+                DirectPublisher.Dispose();
+
+                TopicFactory.Dispose();
+                FanoutFactory.Dispose();
+                DirectFactory.Dispose();
+            }
+
+            disposedValue = true;
+        }
+    }
+
+    public void Dispose()
+    {
+        // Do not change this code. Put cleanup code in 'Dispose(bool disposing)' method
+        Dispose(disposing: true);
+        GC.SuppressFinalize(this);
+    }
 }
 public class BatchRunner<T> : IRunner<T>
 {
+    private bool disposedValue;
+
+    IBatchPublisherFactory TopicFactory { get; set; }
+    IBatchPublisherFactory FanoutFactory { get; set; }
+    IBatchPublisherFactory DirectFactory { get; set; }
     public ITestPublisher<T> TopicPublisher1 { get; set; }
     public ITestPublisher<T> TopicPublisher2 { get; set; }
     public ITestPublisher<T> FanoutPublisher { get; set; }
@@ -128,15 +166,15 @@ public class BatchRunner<T> : IRunner<T>
             .AddJsonFile(config, true, true)
             .Build();
         ILoggerFactory loggerFactory = LoggerFactory.Create(builder => builder.AddConsole());
-        IBatchPublisherFactory topicFactory = new RabbitTopicBatchPublisherFactory(configuration, loggerFactory);
-        TopicPublisher1 = new BatchTestPublisher<T>(topicFactory.NewPublisher<T>("TOPIC_EXCHANGE", "topic.1"));
-        TopicPublisher2 = new BatchTestPublisher<T>(topicFactory.NewPublisher<T>("TOPIC_EXCHANGE", "topic.2"));
+        TopicFactory = new RabbitTopicBatchPublisherFactory(configuration, loggerFactory);
+        TopicPublisher1 = new BatchTestPublisher<T>(TopicFactory.NewPublisher<T>("TOPIC_EXCHANGE", "topic.1"));
+        TopicPublisher2 = new BatchTestPublisher<T>(TopicFactory.NewPublisher<T>("TOPIC_EXCHANGE", "topic.2"));
 
-        IBatchPublisherFactory fanoutFactory = new RabbitFanoutBatchPublisherFactory(configuration, loggerFactory);
-        FanoutPublisher = new BatchTestPublisher<T>(fanoutFactory.NewPublisher<T>("FANOUT_EXCHANGE"));
+        FanoutFactory = new RabbitFanoutBatchPublisherFactory(configuration, loggerFactory);
+        FanoutPublisher = new BatchTestPublisher<T>(FanoutFactory.NewPublisher<T>("FANOUT_EXCHANGE"));
 
-        IBatchPublisherFactory directFactory = new RabbitDirectBatchPublisherFactory(configuration, loggerFactory);
-        DirectPublisher = new BatchTestPublisher<T>(directFactory.NewPublisher<T>("DIRECT_EXCHANGE", "TEST_QUEUE"));
+        DirectFactory = new RabbitDirectBatchPublisherFactory(configuration, loggerFactory);
+        DirectPublisher = new BatchTestPublisher<T>(DirectFactory.NewPublisher<T>("DIRECT_EXCHANGE", "TEST_QUEUE"));
 
         Console.WriteLine($"ThreadPool initial size {ThreadPool.ThreadCount} >> Runner Initialized!");
     }
@@ -156,6 +194,33 @@ public class BatchRunner<T> : IRunner<T>
     public Task Run(ITestPublisher<T> publisher, T message)
     {
         throw new NotImplementedException();
+    }
+
+    protected virtual void Dispose(bool disposing)
+    {
+        if (!disposedValue)
+        {
+            if (disposing)
+            {
+                // dispose managed state (managed objects)
+                TopicPublisher1.Dispose();
+                TopicPublisher2.Dispose();
+                FanoutPublisher.Dispose();
+                DirectPublisher.Dispose();
+
+                TopicFactory.Dispose();
+                FanoutFactory.Dispose();
+                DirectFactory.Dispose();
+            }
+            disposedValue = true;
+        }
+    }
+
+    public void Dispose()
+    {
+        // Do not change this code. Put cleanup code in 'Dispose(bool disposing)' method
+        Dispose(disposing: true);
+        GC.SuppressFinalize(this);
     }
 }
 

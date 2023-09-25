@@ -72,15 +72,9 @@ static Func<LoadRequest, IResult> Load()
             request.VHost = "rabbitsettings.VHOST.json";
         }
 
-        IRunner<Message> runner;
-        if(request.IsBatch)
-        {
-            runner = new BatchRunner<Message>(request.VHost);
-        }
-        else
-        {
-            runner = new Runner<Message>(request.VHost);
-        }
+        using IRunner<Message> runner = 
+            request.IsBatch ? new BatchRunner<Message>(request.VHost) 
+                            : new Runner<Message>(request.VHost);
 
         ITestPublisher<Message> publisher;
         switch (request.ExchangeType)
@@ -198,6 +192,7 @@ static Func<LoadRequest, IResult> Load()
             return acc;
         });
         stats.TryAdd(-1, totals);
+        runner.Dispose();
         return TypedResults.Ok(stats);
     };
 }
