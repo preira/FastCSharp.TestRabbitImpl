@@ -17,7 +17,7 @@ public interface IRunner<T> : IDisposable
 
 public class SingleMsgTestPublisher<T> : ITestPublisher<T>
 {
-    IPublisher<T> publisher;
+    readonly IPublisher<T> publisher;
 
     public SingleMsgTestPublisher(IPublisher<T> publisher)
     {
@@ -47,7 +47,7 @@ public class SingleMsgTestPublisher<T> : ITestPublisher<T>
 
 public class BatchTestPublisher<T> : ITestPublisher<T>
 {
-    IBatchPublisher<T> publisher;
+    readonly IBatchPublisher<T> publisher;
 
     public BatchTestPublisher(IBatchPublisher<T> publisher)
     {
@@ -116,9 +116,9 @@ public class Runner<T> : IRunner<T>
         Console.WriteLine($"publisher 2 {threadName} >> Message Sent!");
     }
 
-    public Task Run(ITestPublisher<T> publisher, IEnumerable<T> message)
+    public async Task Run(ITestPublisher<T> publisher, IEnumerable<T> message)
     {
-        throw new NotImplementedException();
+        await Run(publisher, message.First());
     }
 
     protected virtual void Dispose(bool disposing)

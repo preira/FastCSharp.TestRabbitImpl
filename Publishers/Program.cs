@@ -93,26 +93,9 @@ static Func<LoadRequest, IResult> Load()
         }
 
         var msgArray = request.Message?.Split(";");
-        var msgs = new List<Message>();
-        if (msgArray?.Length > 0)
-        {
-            foreach (var msg in msgArray)
-            {
-                var m = new Message
-                {
-                    Text = msg
-                };
-                msgs.Add(m);
-            }
-        }
-        else
-        {
-            var m = new Message
-            {
-                Text = "Hello World"
-            };
-            msgs.Add(m);
-        }
+        var msgs = msgArray?.Select(m => new Message { Text = m });
+        msgs ??= new List<Message> { new Message { Text = "Hello World" } };
+        
         ConcurrentDictionary<int, Stats> stats = new ConcurrentDictionary<int, Stats>();
         List<Thread> threads = new ();
 
@@ -156,7 +139,7 @@ static Func<LoadRequest, IResult> Load()
                         stat.Errors++;
                     }
                     sw.Stop();
-                    stat.TotalCount += msgs.Count;
+                    stat.TotalCount += msgs.Count();
                     stat.TotalTime += sw.Elapsed;
                     if (stat.MinTime > sw.Elapsed) stat.MinTime = sw.Elapsed;
                     if (stat.MaxTime < sw.Elapsed) stat.MaxTime = sw.Elapsed;
