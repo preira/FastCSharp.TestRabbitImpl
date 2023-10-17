@@ -20,7 +20,7 @@
             "TOPIC_EXCHANGE" : {
                 "Name" : "test.topic.exchange.v-1.0",
                 "Type" : "topic",
-                "RoutingKeys" : ["topic.1", "topic.2", "#"]
+                "RoutingKeys" : ["test.topic.q.1", "test.topic.q.2", "#"]
             },
             "FANOUT_EXCHANGE" : {
                 "Name" : "test.fanout.exchange.v-1.0",

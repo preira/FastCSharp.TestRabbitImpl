@@ -13,9 +13,13 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="FastCSharp.RabbitPublisher" Version="0.4.3-alpha" />
+    <!-- <PackageReference Include="FastCSharp.RabbitPublisher" Version="0.4.3-alpha" /> -->
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="7.0.4" />
     <PackageReference Include="Swashbuckle.AspNetCore" Version="6.4.0" />
   </ItemGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\..\FastCSharp\RabbitPublisher\RabbitPublisher.csproj" />
+    <ProjectReference Include="..\..\FastCSharp\Publisher\Publisher.csproj" />
+  </ItemGroup>
 </Project>

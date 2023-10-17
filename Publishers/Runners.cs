@@ -13,6 +13,7 @@ public interface IRunner<T> : IDisposable
     ITestPublisher<T> DirectPublisher { get; set; }
     Task Run(ITestPublisher<T> publisher, T message);
     Task Run(ITestPublisher<T> publisher, IEnumerable<T> message);
+    bool IsBatch { get; }
 }
 
 public class SingleMsgTestPublisher<T> : ITestPublisher<T>
@@ -29,11 +30,6 @@ public class SingleMsgTestPublisher<T> : ITestPublisher<T>
         return publisher.Publish(message);
     }
 
-    public Task<bool> BatchPublish(IEnumerable<T> message)
-    {
-        throw new NotImplementedException();
-    }
-
     public IHandler<T> AddMsgHandler(Handler<T> handler)
     {
         return publisher.AddMsgHandler(handler);
@@ -42,6 +38,11 @@ public class SingleMsgTestPublisher<T> : ITestPublisher<T>
     public void Dispose()
     {
         publisher.Dispose();
+    }
+
+    public Task<bool> Publish(IEnumerable<T> messages)
+    {
+        throw new NotImplementedException();
     }
 }
 
@@ -59,9 +60,9 @@ public class BatchTestPublisher<T> : ITestPublisher<T>
         throw new NotImplementedException();
     }
 
-    public Task<bool> BatchPublish(IEnumerable<T> message)
+    public Task<bool> Publish(IEnumerable<T> message)
     {
-        return publisher.BatchPublish(message);
+        return publisher.Publish(message);
     }
 
     public IHandler<T> AddMsgHandler(Handler<T> handler)
@@ -75,32 +76,85 @@ public class BatchTestPublisher<T> : ITestPublisher<T>
     }
 }
 
-public class Runner<T> : IRunner<T>
+public class Factories
 {
-    private bool disposedValue;
+    public IPublisherFactory<ITopicPublisher> TopicFactory { get; private set; }
+    public IPublisherFactory<IFanoutPublisher> FanoutFactory { get; private set; }
+    public IPublisherFactory<IDirectPublisher> DirectFactory { get; private set; }
 
-    IPublisherFactory TopicFactory { get; set; }
-    IPublisherFactory FanoutFactory { get; set; }
-    IPublisherFactory DirectFactory { get; set; }
-    public ITestPublisher<T> TopicPublisher1 { get; set; }
-    public ITestPublisher<T> TopicPublisher2 { get; set; }
-    public ITestPublisher<T> FanoutPublisher { get; set; }
-    public ITestPublisher<T> DirectPublisher { get; set; }
-    public Runner(string config)
+    private Factories(string config)
     {
         IConfiguration configuration = new ConfigurationBuilder()
             .AddJsonFile(config, true, true)
             .Build();
-        using ILoggerFactory loggerFactory = LoggerFactory.Create(builder => builder.AddConsole());
+        ILoggerFactory loggerFactory = LoggerFactory.Create(builder => builder.AddConsole());
+        
         TopicFactory = new RabbitTopicPublisherFactory(configuration, loggerFactory);
-        TopicPublisher1 = new SingleMsgTestPublisher<T>(TopicFactory.NewPublisher<T>("TOPIC_EXCHANGE", "topic.1"));
-        TopicPublisher2 = new SingleMsgTestPublisher<T>(TopicFactory.NewPublisher<T>("TOPIC_EXCHANGE", "topic.2"));
-
         FanoutFactory = new RabbitFanoutPublisherFactory(configuration, loggerFactory);
-        FanoutPublisher = new SingleMsgTestPublisher<T>(FanoutFactory.NewPublisher<T>("FANOUT_EXCHANGE"));
-
         DirectFactory = new RabbitDirectPublisherFactory(configuration, loggerFactory);
-        DirectPublisher = new SingleMsgTestPublisher<T>(DirectFactory.NewPublisher<T>("DIRECT_EXCHANGE", "TEST_QUEUE"));
+    }
+
+    private static Factories instance = null!;
+    public static Factories Instance(string config)
+    {
+        if (instance == null)
+        {
+            instance = new Factories(config);
+        }
+        return instance;
+    }
+}
+
+public class BatchFactories
+{
+    public IBatchPublisherFactory<ITopicPublisher> TopicFactory { get; private set; }
+    public IBatchPublisherFactory<IFanoutPublisher> FanoutFactory { get; private set; }
+    public IBatchPublisherFactory<IDirectPublisher> DirectFactory { get; private set; }
+
+    private BatchFactories(string config)
+    {
+        IConfiguration configuration = new ConfigurationBuilder()
+            .AddJsonFile(config, true, true)
+            .Build();
+        ILoggerFactory loggerFactory = LoggerFactory.Create(builder => builder.AddConsole());
+        
+        TopicFactory = new RabbitTopicBatchPublisherFactory(configuration, loggerFactory);
+        FanoutFactory = new RabbitFanoutBatchPublisherFactory(configuration, loggerFactory);
+        DirectFactory = new RabbitDirectBatchPublisherFactory(configuration, loggerFactory);
+    }
+
+    private static BatchFactories instance = null!;
+    public static BatchFactories Instance(string config)
+    {
+        if (instance == null)
+        {
+            instance = new BatchFactories(config);
+        }
+        return instance;
+    }
+}
+
+public class Runner<T> : IRunner<T>
+{
+    private bool disposedValue;
+
+    readonly Factories factories;
+    public ITestPublisher<T> TopicPublisher1 { get; set; }
+    public ITestPublisher<T> TopicPublisher2 { get; set; }
+    public ITestPublisher<T> FanoutPublisher { get; set; }
+    public ITestPublisher<T> DirectPublisher { get; set; }
+    public bool IsBatch { get => false; }
+
+    public Runner(string config)
+    {
+        factories = Factories.Instance(config);
+
+        TopicPublisher1 = new SingleMsgTestPublisher<T>(factories.TopicFactory.NewPublisher<T>("TOPIC_EXCHANGE", "topic.1"));
+        TopicPublisher2 = new SingleMsgTestPublisher<T>(factories.TopicFactory.NewPublisher<T>("TOPIC_EXCHANGE", "topic.2"));
+
+        FanoutPublisher = new SingleMsgTestPublisher<T>(factories.FanoutFactory.NewPublisher<T>("FANOUT_EXCHANGE"));
+
+        DirectPublisher = new SingleMsgTestPublisher<T>(factories.DirectFactory.NewPublisher<T>("DIRECT_EXCHANGE", "TEST_QUEUE"));
 
         Console.WriteLine($"ThreadPool initial size {ThreadPool.ThreadCount} >> Runner Initialized!");
     }
@@ -132,10 +186,6 @@ public class Runner<T> : IRunner<T>
                 TopicPublisher2.Dispose();
                 FanoutPublisher.Dispose();
                 DirectPublisher.Dispose();
-
-                TopicFactory.Dispose();
-                FanoutFactory.Dispose();
-                DirectFactory.Dispose();
             }
 
             disposedValue = true;
@@ -153,28 +203,20 @@ public class BatchRunner<T> : IRunner<T>
 {
     private bool disposedValue;
 
-    IBatchPublisherFactory TopicFactory { get; set; }
-    IBatchPublisherFactory FanoutFactory { get; set; }
-    IBatchPublisherFactory DirectFactory { get; set; }
+    public bool IsBatch { get => true; }
+    readonly BatchFactories factories;
     public ITestPublisher<T> TopicPublisher1 { get; set; }
     public ITestPublisher<T> TopicPublisher2 { get; set; }
     public ITestPublisher<T> FanoutPublisher { get; set; }
     public ITestPublisher<T> DirectPublisher { get; set; }
     public BatchRunner(string config)
     {
-        IConfiguration configuration = new ConfigurationBuilder()
-            .AddJsonFile(config, true, true)
-            .Build();
-        ILoggerFactory loggerFactory = LoggerFactory.Create(builder => builder.AddConsole());
-        TopicFactory = new RabbitTopicBatchPublisherFactory(configuration, loggerFactory);
-        TopicPublisher1 = new BatchTestPublisher<T>(TopicFactory.NewPublisher<T>("TOPIC_EXCHANGE", "topic.1"));
-        TopicPublisher2 = new BatchTestPublisher<T>(TopicFactory.NewPublisher<T>("TOPIC_EXCHANGE", "topic.2"));
+        factories = BatchFactories.Instance(config);
 
-        FanoutFactory = new RabbitFanoutBatchPublisherFactory(configuration, loggerFactory);
-        FanoutPublisher = new BatchTestPublisher<T>(FanoutFactory.NewPublisher<T>("FANOUT_EXCHANGE"));
-
-        DirectFactory = new RabbitDirectBatchPublisherFactory(configuration, loggerFactory);
-        DirectPublisher = new BatchTestPublisher<T>(DirectFactory.NewPublisher<T>("DIRECT_EXCHANGE", "TEST_QUEUE"));
+        TopicPublisher1 = new BatchTestPublisher<T>(factories.TopicFactory.NewPublisher<T>("TOPIC_EXCHANGE", "topic.1"));
+        TopicPublisher2 = new BatchTestPublisher<T>(factories.TopicFactory.NewPublisher<T>("TOPIC_EXCHANGE", "topic.2"));
+        FanoutPublisher = new BatchTestPublisher<T>(factories.FanoutFactory.NewPublisher<T>("FANOUT_EXCHANGE"));
+        DirectPublisher = new BatchTestPublisher<T>(factories.DirectFactory.NewPublisher<T>("DIRECT_EXCHANGE", "TEST_QUEUE"));
 
         Console.WriteLine($"ThreadPool initial size {ThreadPool.ThreadCount} >> Runner Initialized!");
     }
@@ -183,7 +225,7 @@ public class BatchRunner<T> : IRunner<T>
     {
         string threadName = $"{Thread.CurrentThread.Name} ({Thread.CurrentThread.GetHashCode()}/{ThreadPool.ThreadCount})";
 
-        bool isSent = await publisher.BatchPublish(messages);
+        bool isSent = await publisher.Publish(messages);
         if (!isSent)
         {
             throw new Exception($"publisher 2 {threadName} >> Message not sent!");
@@ -207,10 +249,6 @@ public class BatchRunner<T> : IRunner<T>
                 TopicPublisher2.Dispose();
                 FanoutPublisher.Dispose();
                 DirectPublisher.Dispose();
-
-                TopicFactory.Dispose();
-                FanoutFactory.Dispose();
-                DirectFactory.Dispose();
             }
             disposedValue = true;
         }

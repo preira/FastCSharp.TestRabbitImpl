@@ -6,6 +6,13 @@
         "UserName"  : "guest",
         "Password"  : "guest",
         "Timeout" : "00:00:10",
+        "Pool" : {
+            "minSize" : 5,
+            "maxSize" : 10,
+            "initialize" : true,
+            "gatherStats" : true,
+            "defaultWaitTimeout" : "00:00:01"
+        },
         "Exchanges" : 
         {
             "DIRECT_EXCHANGE" : {

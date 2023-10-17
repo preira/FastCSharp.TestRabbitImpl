@@ -2,10 +2,18 @@
     "RabbitPublisherConfig" : {
         "ClientName" : "FastCSharp",
         "HostName" : "localhost",
+        "VirtualHost": "test-vhost",
         "Port" : 5672,
         "UserName"  : "guest",
         "Password"  : "guest",
         "Timeout" : "00:00:10",
+        "Pool" : {
+            "minSize" : 5,
+            "maxSize" : 10,
+            "initialize" : false ,
+            "gatherStats" : true,
+            "defaultWaitTimeout" : "00:00:01"
+        },
         "Exchanges" : 
         {
             "DIRECT_EXCHANGE" : {
@@ -18,7 +26,7 @@
             "TOPIC_EXCHANGE" : {
                 "Name" : "test.topic.exchange.v-1.0",
                 "Type" : "topic",
-                "RoutingKeys" : ["topic.1", "topic.2"]
+                "RoutingKeys" : ["test.topic.q.1", "test.topic.q.2"]
             },
             "FANOUT_EXCHANGE" : {
                 "Name" : "test.fanout.exchange.v-1.0",

@@ -41,22 +41,41 @@ public class Endpoints
 
     static Func<string?, Task<IResult>> Publish(IRunner<Message> runner, ITestPublisher<Message> publisher)
     {
-        return async Task<IResult> (string? message) =>
+        if (runner.IsBatch)
         {
-            var msgArray = message?.Split(";");
-            if (msgArray?.Length > 0)
+            return async Task<IResult> (string? message) =>
             {
-                var msgs = new List<Message>();
-                foreach (var msg in msgArray)
+                var msgArray = message?.Split(";");
+                if (msgArray?.Length > 0)
                 {
-                    var m = new Message();
-                    m.Text = msg;
-                    msgs.Add(m);
+                    var msgs = new List<Message>();
+                    foreach (var msg in msgArray)
+                    {
+                        var m = new Message();
+                        m.Text = msg;
+                        msgs.Add(m);
+                    }
+                    await runner.Run(publisher, msgs);
+                    return TypedResults.Accepted("");
                 }
-                await runner.Run(publisher, msgs);
+                return TypedResults.BadRequest(message);
+            };
+        }
+        else
+        {
+            return async Task<IResult> (string? message) =>
+            {
+                if (message == null)
+                {
+                    return TypedResults.BadRequest(message);
+                }
+                var m = new Message
+                {
+                    Text = message
+                };
+                await runner.Run(publisher, m);
                 return TypedResults.Accepted("");
-            }
-            return TypedResults.BadRequest(message);
-        };
+            };
+        }
     }
 }

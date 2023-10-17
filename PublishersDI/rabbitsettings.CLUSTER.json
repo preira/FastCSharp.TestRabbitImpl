@@ -5,6 +5,7 @@
             {"HostName":"localhost", "Port":5671},
             {"HostName":"localhost", "Port":5672}
         ],
+        "VirtualHost": "test-vhost",
         "UserName"  : "guest",
         "Password"  : "guest",
         "Timeout" : "00:00:10",
@@ -20,7 +21,7 @@
             "TOPIC_EXCHANGE" : {
                 "Name" : "test.topic.exchange.v-1.0",
                 "Type" : "topic",
-                "RoutingKeys" : ["#"]
+                "RoutingKeys" : ["test.topic.q.1", "test.topic.q.2", "#"]
             },
             "FANOUT_EXCHANGE" : {
                 "Name" : "test.fanout.exchange.v-1.0",
