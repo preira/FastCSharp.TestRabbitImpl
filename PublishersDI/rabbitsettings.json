@@ -19,14 +19,14 @@
             "DIRECT_EXCHANGE" : {
                 "Name" : "test.direct.exchange.v-1.0",
                 "Type" : "direct",
-                "NamedRoutingKeys" : {
+                "Queues" : {
                     "TEST_QUEUE" : "test.direct.q"
                 }
             },
             "TOPIC_EXCHANGE" : {
                 "Name" : "test.topic.exchange.v-1.0",
                 "Type" : "topic",
-                "RoutingKeys" : ["test.topic.q.1", "test.topic.q.2"]
+                "RoutingKeys" : ["topic.1", "topic.2"]
             },
             "FANOUT_EXCHANGE" : {
                 "Name" : "test.fanout.exchange.v-1.0",

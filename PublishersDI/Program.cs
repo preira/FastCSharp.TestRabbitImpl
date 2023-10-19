@@ -1,7 +1,7 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
-using FastCSharp.Pool;
 using FastCSharp.Publisher;
+using FastCSharp.RabbitPublisher.Common;
 using Microsoft.OpenApi.Models;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -24,7 +24,8 @@ services.AddSwaggerGen(c =>
 });
 
 // services.AddRabbitPublisher("rabbitsettings.CLUSTER.json");
-services.AddRabbitPublisher("rabbitsettings.json");
+services.AddRabbitPublisher<string>("rabbitsettings.json");
+services.AddRabbitPublisher<Message>("rabbitsettings.json");
 
 var app = builder.Build();
 app.UseRouting();
@@ -37,99 +38,98 @@ app.UseSwaggerUI(c =>
 });
 var context = "fastcsharp";
 var displayName = "Default VHost";
-app.MapGet($"{context}/Direct/SendMessage", async (string message, IPublisherFactory<IDirectPublisher> publisherFactory) => 
-{
-    using var publisher = publisherFactory.NewPublisher<string>("DIRECT_EXCHANGE", "TEST_QUEUE");
-    var result = await publisher.Publish(message);
-    if(result)
+app.MapGet($"{context}/Direct/SendMessage", async (string message, IRabbitPublisher<string> publisher) => 
     {
-        // Console.WriteLine($"Message {message} sent to {publisher.GetType().Name}");
-        return Results.Ok("Success");
-    }
-    else 
-    {
-        // Console.WriteLine($"Error publishing Message {message} sent to {publisher.GetType().Name}");
-        return Results.Problem("Error");
-    }
-})
+        
+        var result = await publisher.ForExchange("DIRECT_EXCHANGE").ForQueue("TEST_QUEUE").Publish(message);
+        if(result)
+        {
+            // Console.WriteLine($"Message {message} sent to {publisher.GetType().Name}");
+            return Results.Ok("Success");
+        }   
+        else 
+        {
+            // Console.WriteLine($"Error publishing Message {message} sent to {publisher.GetType().Name}");
+            return Results.Problem("Error");
+        }
+    })
     .WithName($"Direct for {context}")
     .WithDisplayName(displayName);
 
 // http://localhost:5106/Topic/topic.1/SendMessage?message=Hello%20World
-app.MapGet($"{context}/Topic/topic.q.1/SendMessage", async (string message, IPublisherFactory<ITopicPublisher> publisherFactory) => 
-{
-    using var publisher = publisherFactory.NewPublisher<string>("TOPIC_EXCHANGE", "test.topic.q.1");
-    var result = await publisher.Publish(message);
-    if(result)
+app.MapGet($"{context}/Topic/topic.q.1/SendMessage", async (string message, IRabbitPublisher<string> publisher) => 
     {
-        // Console.WriteLine($"Message {message} sent to {publisher.GetType().Name}");
-        return Results.Ok("Success");
-    }
-    else 
-    {
-        // Console.WriteLine($"Error publishing Message {message} sent to {publisher.GetType().Name}");
-        return Results.Problem("Error");
-    }
-})
+        
+        var result = await publisher.ForExchange("TOPIC_EXCHANGE").ForRouting("topic.1").Publish(message);
+        if(result)
+        {
+            // Console.WriteLine($"Message {message} sent to {publisher.GetType().Name}");
+            return Results.Ok("Success");
+        }
+        else 
+        {
+            // Console.WriteLine($"Error publishing Message {message} sent to {publisher.GetType().Name}");
+            return Results.Problem("Error");
+        }
+    })
     .WithName($"Topic for {context} topic.1")
     .WithDisplayName(displayName);
 
 // http://localhost:5106/Topic/topic.2/SendMessage?message=Hello%20World
-app.MapGet($"{context}/Topic/topic.q.2/SendMessage", async (string message, IPublisherFactory<ITopicPublisher> publisherFactory) => 
-{
-    using var publisher = publisherFactory.NewPublisher<string>("TOPIC_EXCHANGE", "test.topic.q.2");
-    var result = await publisher.Publish(message);
-    if(result)
+app.MapGet($"{context}/Topic/topic.q.2/SendMessage", async (string message, IRabbitPublisher<string> publisher) => 
     {
-        // Console.WriteLine($"Message {message} sent to {publisher.GetType().Name}");
-        return Results.Ok("Success");
-    }
-    else 
-    {
-        // Console.WriteLine($"Error publishing Message {message} sent to {publisher.GetType().Name}");
-        return Results.Problem("Error");
-    }
-})
+        var result = await publisher.ForExchange("TOPIC_EXCHANGE").ForRouting("topic.2").Publish(message);
+        if(result)
+        {
+            // Console.WriteLine($"Message {message} sent to {publisher.GetType().Name}");
+            return Results.Ok("Success");
+        }
+        else 
+        {
+            // Console.WriteLine($"Error publishing Message {message} sent to {publisher.GetType().Name}");
+            return Results.Problem("Error");
+        }
+    })
     .WithName($"Topic for {context} topic.2")
     .WithDisplayName(displayName);
 
 // http://localhost:5106/Fanout/SendMessage?message=Hello%20World
-app.MapGet($"{context}/Fanout/SendMessage", async (string message, IPublisherFactory<IFanoutPublisher> publisherFactory) => 
-{
-    var publisher = publisherFactory.NewPublisher<string>("FANOUT_EXCHANGE");
-    var result = await publisher.Publish(message);
-    if(result)
+app.MapGet($"{context}/Fanout/SendMessage", async (string message, IRabbitPublisher<string> publisher) => 
     {
-        // Console.WriteLine($"Message {message} sent to {publisher.GetType().Name}");
-        return Results.Ok("Success");
-    }
-    else 
-    {
-        // Console.WriteLine($"Error publishing Message {message} sent to {publisher.GetType().Name}");
-        return Results.Problem("Error");
-    }
-})
+        publisher.ForExchange("FANOUT_EXCHANGE");
+        var result = await publisher.Publish(message);
+        if(result)
+        {
+            // Console.WriteLine($"Message {message} sent to {publisher.GetType().Name}");
+            return Results.Ok("Success");
+        }
+        else 
+        {
+            // Console.WriteLine($"Error publishing Message {message} sent to {publisher.GetType().Name}");
+            return Results.Problem("Error");
+        }
+    })
     .WithName($"Fanout for {context}")
     .WithDisplayName(displayName);
 
 app.MapPost($"{context}/Fantout/SendMessage", (
         LoadRequest request, 
-        IPublisherFactory<IFanoutPublisher> fanoutFactory) =>
-{
-    var publisher = fanoutFactory.NewPublisher<Message>("FANOUT_EXCHANGE");
-    var msgArray = request.Message?.Split(";");
-    var msgs = msgArray?.Select(m => new Message { Text = m });
-    msgs ??= new List<Message> { new() { Text = "Hello World" } };
-    return Send(request, msgs.Count(), async () => {
-        return await publisher.Publish(msgs.First());
+        IRabbitPublisher<Message> publisher) =>
+    {
+        publisher.ForExchange("FANOUT_EXCHANGE");
+        var msgArray = request.Message?.Split(";");
+        var msgs = msgArray?.Select(m => new Message { Text = m });
+        msgs ??= new List<Message> { new() { Text = "Hello World" } };
+        return Send(request, msgs.Count(), async () => {
+            return await publisher.Publish(msgs.First());
+        });
     });
-});
 
 app.MapPost($"{context}/Fantout/SendBatch", (
         LoadRequest request, 
-        IBatchPublisherFactory<IFanoutPublisher> fanoutFactory) =>
+        IRabbitPublisher<Message> publisher) =>
 {
-    var publisher = fanoutFactory.NewPublisher<Message>("FANOUT_EXCHANGE");
+    publisher.ForExchange("FANOUT_EXCHANGE");
     var msgArray = request.Message?.Split(";");
     var msgs = msgArray?.Select(m => new Message { Text = m });
     msgs ??= new List<Message> { new() { Text = "Hello World" } };
@@ -140,46 +140,24 @@ app.MapPost($"{context}/Fantout/SendBatch", (
 
 app.MapPost($"{context}/Load/SendMessage", (
         LoadRequest request, 
-        IPublisherFactory<IFanoutPublisher> fanoutFactory,
-        IPublisherFactory<ITopicPublisher> topicFactory,
-        IPublisherFactory<IDirectPublisher> directFactory,
-        IBatchPublisherFactory<IFanoutPublisher> batchFanoutFactory,
-        IBatchPublisherFactory<ITopicPublisher> batchTopicFactory,
-        IBatchPublisherFactory<IDirectPublisher> batchDirectFactory
+        IRabbitPublisher<Message> publisher
     ) =>
-{
-    var msgArray = request.Message?.Split(";");
-    var msgs = msgArray?.Select(m => new Message { Text = m });
-    msgs ??= new List<Message> { new() { Text = "Hello World" } };
-
-    if(request.IsBatch)
     {
+        var msgArray = request.Message?.Split(";");
+        var msgs = msgArray?.Select(m => new Message { Text = m });
+        msgs ??= new List<Message> { new() { Text = "Hello World" } };
+
         return Send(request, msgs.Count(), async () => {
-            using IBatchPublisher<Message>? publisher = request.ExchangeType switch
+            publisher = request.ExchangeType switch
             {
-                "direct" => batchDirectFactory.NewPublisher<Message>("DIRECT_EXCHANGE", "TEST_QUEUE"),
-                "topic" => batchTopicFactory.NewPublisher<Message>("TOPIC_EXCHANGE", "topic.1"),
-                "fanout" => batchFanoutFactory.NewPublisher<Message>("FANOUT_EXCHANGE"),
+                "direct" => publisher.ForExchange("DIRECT_EXCHANGE").ForQueue("TEST_QUEUE"),
+                "topic" =>  publisher.ForExchange("TOPIC_EXCHANGE").ForRouting("topic.1"),
+                "fanout" => publisher.ForExchange("FANOUT_EXCHANGE"),
                 _ => null,
             } ?? throw new Exception($"Publisher not found for {request.ExchangeType}");
-            return await publisher.Publish(msgs);
+            return request.IsBatch ? await publisher.Publish(msgs) : await publisher.Publish(msgs.First());
         });
-    }
-    else
-    {
-        return Send(request, msgs.Count(), async () => {
-            using IPublisher<Message>? publisher = request.ExchangeType switch
-            {
-                "direct" => directFactory.NewPublisher<Message>("DIRECT_EXCHANGE", "TEST_QUEUE"),
-                "topic" => topicFactory.NewPublisher<Message>("TOPIC_EXCHANGE", "topic.1"),
-                "fanout" => fanoutFactory.NewPublisher<Message>("FANOUT_EXCHANGE"),
-                _ => null,
-            } ?? throw new Exception($"Publisher not found for {request.ExchangeType}");
-
-            return await publisher.Publish(msgs.First());
-        });
-    }
-})
+    })
     .WithName($"Single for {context}")
     .WithDisplayName(displayName);
 
@@ -255,37 +233,10 @@ static IResult Send(LoadRequest request, int msgCount, Func<Task<bool>> Publish)
     return TypedResults.Ok(stats);
 }
 
-app.MapGet($"{context}/Pool/Statistics", (
-        string publisherType, 
-        bool IsBatch, 
-        IPublisherFactory<IFanoutPublisher> fanoutFactory,
-        IPublisherFactory<ITopicPublisher> topicFactory,
-        IPublisherFactory<IDirectPublisher> directFactory,
-        IBatchPublisherFactory<IFanoutPublisher> batchFanoutFactory,
-        IBatchPublisherFactory<ITopicPublisher> batchTopicFactory,
-        IBatchPublisherFactory<IDirectPublisher> batchDirectFactory
-    ) => 
-{
-    IPoolStats? stats = null;
-    switch (publisherType)
-    {
-        case "direct":
-            stats = IsBatch ? batchDirectFactory.PoolStats : directFactory.PoolStats;
-            break;
-        case "topic":
-            stats = IsBatch ? batchTopicFactory.PoolStats : topicFactory.PoolStats;
-            break;
-        case "fanout":
-            stats = IsBatch ? batchFanoutFactory.PoolStats : fanoutFactory.PoolStats;
-            break;
-        default:
-            return Results.Problem("Publisher not found");
-    }
-    return TypedResults.Ok(stats);
-})
+app.MapGet($"{context}/Pool/Statistics", 
+    (IRabbitConnectionPool connectionPool) => TypedResults.Ok(connectionPool.Stats))
     .WithName($"Pool Stats")
     .WithDisplayName("Stats");
-
 
 app.Run();
 

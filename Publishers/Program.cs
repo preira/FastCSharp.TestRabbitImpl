@@ -1,6 +1,10 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Net.Mime;
+using FastCSharp.Publisher;
+using FastCSharp.RabbitPublisher.Common;
+using FastCSharp.RabbitPublisher.Impl;
+using FastCSharp.RabbitPublisher.Injection;
 using FastCSharp.RabbitPublisher.Test;
 using Microsoft.OpenApi.Models;
 
@@ -31,24 +35,30 @@ app.UseSwaggerUI(c =>
     c.SwaggerEndpoint("/swagger/v1/swagger.json", "Fast Framework.Test API");
 });
 
+ILoggerFactory loggerFactory = LoggerFactory.Create(builder => builder.AddConsole());
 
-var defaultRunner = new Runner<Message>("rabbitsettings.json");
-var defaultEndpoints = new Endpoints(defaultRunner);
+var defaultEndpoints = new Endpoints(loggerFactory, "rabbitsettings.json");
 defaultEndpoints.Register(app, "", "Default VHost");
 
-var vhostRunner = new Runner<Message>("rabbitsettings.VHOST.json");
-var vhostEndpoints = new Endpoints(vhostRunner);
+var vhostEndpoints = new Endpoints(loggerFactory, "rabbitsettings.VHOST.json");
 vhostEndpoints.Register(app, "/test-vhost", "VHost test-vhost");
 
-var batchDefaultRunner = new BatchRunner<Message>("rabbitsettings.json");
-var batchDefaultEndpoints = new Endpoints(batchDefaultRunner);
+var batchDefaultEndpoints = new Endpoints(loggerFactory, "rabbitsettings.json", true);
 batchDefaultEndpoints.Register(app, "/batch", "Batch Default VHost");
 
-var batchVhostRunner = new BatchRunner<Message>("rabbitsettings.VHOST.json");
-var batchVhostEndpoints = new Endpoints(batchVhostRunner);
+var batchVhostEndpoints = new Endpoints(loggerFactory, "rabbitsettings.VHOST.json", true);
 batchVhostEndpoints.Register(app, "/batch-vhost", "Batch VHost");
 
-app.MapPost("Load/SendMessage", Load())
+IConfiguration configuration = new ConfigurationBuilder()
+    .AddJsonFile("rabbitsettings.VHOST.json", true, true)
+    .Build();
+var section = configuration.GetSection(RabbitOptions.SectionName);
+RabbitOptions options = new();
+section.Bind(options.Value);
+
+var connectionPool = new RabbitConnectionPool(options.Value, loggerFactory);
+
+app.MapPost("Load/SendMessage", Load(connectionPool, loggerFactory, options.Value))
     .WithName("Load Test")
     .WithDisplayName("Load Test")
     .Produces(StatusCodes.Status200OK)
@@ -57,36 +67,28 @@ app.MapPost("Load/SendMessage", Load())
 
 app.Run();
 
-static Func<LoadRequest, IResult> Load()
+static Func<LoadRequest, IResult> Load(RabbitConnectionPool pool, ILoggerFactory loggerFactory, RabbitPublisherConfig options)
 {
+
     return IResult (
         LoadRequest request
     ) =>
     {
-        if(request.VHost == null || request.VHost == "" || request.VHost == "/")
-        {
-            request.VHost = "rabbitsettings.json";
-        }
-        else
-        {
-            request.VHost = "rabbitsettings.VHOST.json";
-        }
 
-        using IRunner<Message> runner = 
-            request.IsBatch ? new BatchRunner<Message>(request.VHost) 
-                            : new Runner<Message>(request.VHost);
+        IRabbitPublisher<Message> publisher = new RabbitPublisher<Message>(pool, loggerFactory, options);
+        publisher.ForExchange("DIRECT_EXCHANGE").ForQueue("TEST_QUEUE");
+        // return await Publish(message, publisher);
 
-        ITestPublisher<Message> publisher;
         switch (request.ExchangeType)
         {
             case "direct":
-                publisher = runner.DirectPublisher;
+                publisher.ForExchange("DIRECT_EXCHANGE").ForQueue("TEST_QUEUE");
                 break;
             case "topic":
-                publisher = runner.TopicPublisher1;
+                publisher.ForExchange("TOPIC_EXCHANGE").ForRouting("topic.1");
                 break;
             case "fanout":
-                publisher = runner.FanoutPublisher;
+                publisher.ForExchange("FANOUT_EXCHANGE");
                 break;
             default:
                 return TypedResults.BadRequest(request.ExchangeType);
@@ -124,11 +126,11 @@ static Func<LoadRequest, IResult> Load()
                         Task task;
                         if (request.IsBatch)
                         {
-                            task = runner.Run(publisher, msgs);
+                            task = publisher.Publish(msgs);
                         }
                         else
                         {
-                            task = runner.Run(publisher, msgs.First());
+                            task = publisher.Publish(msgs.First());
                         }
                         task.Wait();
                         stat.Success++;
@@ -175,7 +177,7 @@ static Func<LoadRequest, IResult> Load()
             return acc;
         });
         stats.TryAdd(-1, totals);
-        runner.Dispose();
+        publisher.Dispose();
         return TypedResults.Ok(stats);
     };
 }
@@ -194,7 +196,6 @@ public class Stats
 }
 public class LoadRequest
 {
-    public string? VHost { get; set; }
     public string? Message { get; set; }
     public string? ExchangeType { get; set; }
     public bool IsBatch { get; set; }

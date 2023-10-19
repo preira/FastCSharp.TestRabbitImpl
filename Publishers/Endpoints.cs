@@ -1,3 +1,8 @@
+using FastCSharp.Publisher;
+using FastCSharp.RabbitPublisher.Common;
+using FastCSharp.RabbitPublisher.Impl;
+using FastCSharp.RabbitPublisher.Injection;
+
 namespace FastCSharp.RabbitPublisher.Test;
 public class Message
 {
@@ -9,73 +14,108 @@ public class Message
 }
 public class Endpoints
 {
-    IRunner<Message> runner;
-    public Endpoints(IRunner<Message> runner)
+    readonly RabbitConnectionPool connectionPool;
+    readonly ILoggerFactory loggerFactory;
+    RabbitPublisherConfig publisherConfig;
+    bool batch;
+    public Endpoints(ILoggerFactory loggerFactory, string configFile, bool batch = false)
     {
-        this.runner = runner;
+        this.batch = batch;
+        IConfiguration configuration = new ConfigurationBuilder()
+            .AddJsonFile(configFile, true, true)
+            .Build();
+        var section = configuration.GetSection(RabbitOptions.SectionName);
+        RabbitOptions options = new();
+        section.Bind(options.Value);
+
+        this.publisherConfig = options.Value;
+        this.loggerFactory = loggerFactory;
+        connectionPool = new RabbitConnectionPool(publisherConfig, loggerFactory);
     }
 
     public WebApplication Register(WebApplication app, string context, string displayName)
     {
-        app.MapGet($"{context}/Direct/SendMessage", Publish(runner, runner.DirectPublisher))
+        app.MapGet($"{context}/Direct/SendMessage", DirectPublish)
             .WithName($"Direct for {context}")
             .WithDisplayName(displayName);
 
         // http://localhost:5106/Topic/topic.1/SendMessage?message=Hello%20World
-        app.MapGet($"{context}/Topic/topic.1/SendMessage", Publish(runner, runner.TopicPublisher1))
+        app.MapGet($"{context}/Topic/topic.1/SendMessage", Topic1Publish)
             .WithName($"Topic for {context} topic.1")
             .WithDisplayName(displayName);
 
         // http://localhost:5106/Topic/topic.2/SendMessage?message=Hello%20World
-        app.MapGet($"{context}/Topic/topic.2/SendMessage", Publish(runner, runner.TopicPublisher2))
+        app.MapGet($"{context}/Topic/topic.2/SendMessage", Topic2Publish)
             .WithName($"Topic for {context} topic.2")
             .WithDisplayName(displayName);
 
         // http://localhost:5106/Fanout/SendMessage?message=Hello%20World
-        app.MapGet($"{context}/Fanout/SendMessage", Publish(runner, runner.FanoutPublisher))
+        app.MapGet($"{context}/Fanout/SendMessage", FanoutPublish)
             .WithName($"Fanout for {context}")
             .WithDisplayName(displayName);
 
         return app;
     }
 
-    static Func<string?, Task<IResult>> Publish(IRunner<Message> runner, ITestPublisher<Message> publisher)
+    async Task<IResult> DirectPublish(string? message)
     {
-        if (runner.IsBatch)
+        IRabbitPublisher<Message> publisher = new RabbitPublisher<Message>(connectionPool, loggerFactory, publisherConfig);
+        publisher.ForExchange("DIRECT_EXCHANGE").ForQueue("TEST_QUEUE");
+        return await Publish(message, publisher);
+    }
+
+    async Task<IResult> Topic1Publish(string? message)
+    {
+        IRabbitPublisher<Message> publisher = new RabbitPublisher<Message>(connectionPool, loggerFactory, publisherConfig);
+        publisher.ForExchange("TOPIC_EXCHANGE").ForRouting("topic.1");
+        return await Publish(message, publisher);
+    }
+
+    async Task<IResult> Topic2Publish(string? message)
+    {
+        IRabbitPublisher<Message> publisher = new RabbitPublisher<Message>(connectionPool, loggerFactory, publisherConfig);
+        publisher.ForExchange("TOPIC_EXCHANGE").ForRouting("topic.2");
+        return await Publish(message, publisher);
+    }
+
+    async Task<IResult> FanoutPublish(string? message)
+    {
+        IRabbitPublisher<Message> publisher = new RabbitPublisher<Message>(connectionPool, loggerFactory, publisherConfig);
+        publisher.ForExchange("FANOUT_EXCHANGE");
+        return await Publish(message, publisher);
+    }
+
+    async Task<IResult> Publish(string? message, IRabbitPublisher<Message> publisher)
+    {
+        if (batch)
+            return await BatchPublish(message, publisher);
+        
+        return await SinglePublish(message, publisher);
+    }
+
+    async Task<IResult> SinglePublish(string? message, IRabbitPublisher<Message> publisher)
+    {
+        var m = new Message();
+        m.Text = message;
+        await publisher.Publish(m);
+        return TypedResults.Accepted("");
+    }
+    
+    async Task<IResult> BatchPublish(string? message, IRabbitPublisher<Message> publisher)
+    {
+        var msgArray = message?.Split(";");
+        if (msgArray?.Length > 0)
         {
-            return async Task<IResult> (string? message) =>
+            var msgs = new List<Message>();
+            foreach (var msg in msgArray)
             {
-                var msgArray = message?.Split(";");
-                if (msgArray?.Length > 0)
-                {
-                    var msgs = new List<Message>();
-                    foreach (var msg in msgArray)
-                    {
-                        var m = new Message();
-                        m.Text = msg;
-                        msgs.Add(m);
-                    }
-                    await runner.Run(publisher, msgs);
-                    return TypedResults.Accepted("");
-                }
-                return TypedResults.BadRequest(message);
-            };
+                var m = new Message();
+                m.Text = msg;
+                msgs.Add(m);
+            }
+            await publisher.Publish(msgs);
+            return TypedResults.Accepted("");
         }
-        else
-        {
-            return async Task<IResult> (string? message) =>
-            {
-                if (message == null)
-                {
-                    return TypedResults.BadRequest(message);
-                }
-                var m = new Message
-                {
-                    Text = message
-                };
-                await runner.Run(publisher, m);
-                return TypedResults.Accepted("");
-            };
-        }
+        return TypedResults.BadRequest(message);
     }
 }
