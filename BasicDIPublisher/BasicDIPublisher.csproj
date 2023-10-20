@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <Company>FastCSharp</Company>
+    <Product>FastCSharp</Product>
+    <PackageId>FastCSharp.TestRabbitImpl.BasicDIPublisher</PackageId>
+    <version>1.0.0</version>
+
+    <Author>João Pereira</Author>
+
+    <Description>Package containing RabbitMQ simplified Publisher implementation sample using FastCSharp framework.</Description>
+    <PackageTags>FastCSharp RabbitMQ Publisher Sample</PackageTags>
+
+   <Copyright>
+      <![CDATA[Copyright © FastCSharp 2023]]>
+    </Copyright>
+
+    <ProjectUrl>https://github.com/preira/FastCSharp/tree/main/FastCSharp.TestRabbitImpl/BasicDIPublisher</ProjectUrl>
+
+    <PackageLicenseFile>LICENSE</PackageLicenseFile>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+
+    <TargetFramework>net7.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net7.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="FastCSharp.RabbitPublisher" Version="1.0.0" />
+  </ItemGroup>
+
+</Project>
