@@ -75,24 +75,6 @@ static Func<LoadRequest, IResult> Load(RabbitConnectionPool pool, ILoggerFactory
     ) =>
     {
 
-        IRabbitPublisher<Message> publisher = new RabbitPublisher<Message>(pool, loggerFactory, options);
-        publisher.ForExchange("DIRECT_EXCHANGE").ForQueue("TEST_QUEUE");
-        // return await Publish(message, publisher);
-
-        switch (request.ExchangeType)
-        {
-            case "direct":
-                publisher.ForExchange("DIRECT_EXCHANGE").ForQueue("TEST_QUEUE");
-                break;
-            case "topic":
-                publisher.ForExchange("TOPIC_EXCHANGE").ForRouting("topic.1");
-                break;
-            case "fanout":
-                publisher.ForExchange("FANOUT_EXCHANGE");
-                break;
-            default:
-                return TypedResults.BadRequest(request.ExchangeType);
-        }
 
         var msgArray = request.Message?.Split(";");
         var msgs = msgArray?.Select(m => new Message { Text = m });
@@ -107,6 +89,23 @@ static Func<LoadRequest, IResult> Load(RabbitConnectionPool pool, ILoggerFactory
         {
             var t = new Thread(() =>
             {
+                using IRabbitPublisher<Message> publisher = new RabbitPublisher<Message>(pool, loggerFactory, options);
+                publisher.ForExchange("DIRECT_EXCHANGE").ForQueue("TEST_QUEUE");
+                // return await Publish(message, publisher);
+
+                switch (request.ExchangeType)
+                {
+                    case "direct":
+                        publisher.ForExchange("DIRECT_EXCHANGE").ForQueue("TEST_QUEUE");
+                        break;
+                    case "topic":
+                        publisher.ForExchange("TOPIC_EXCHANGE").ForRouting("topic.1");
+                        break;
+                    case "fanout":
+                        publisher.ForExchange("FANOUT_EXCHANGE");
+                        break;
+                }
+
                 Stats stat = new()
                 {
                     TotalCount = 0,
@@ -177,7 +176,6 @@ static Func<LoadRequest, IResult> Load(RabbitConnectionPool pool, ILoggerFactory
             return acc;
         });
         stats.TryAdd(-1, totals);
-        publisher.Dispose();
         return TypedResults.Ok(stats);
     };
 }

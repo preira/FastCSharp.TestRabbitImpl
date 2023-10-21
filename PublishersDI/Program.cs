@@ -2,6 +2,8 @@ using System.Collections.Concurrent;
 using System.Diagnostics;
 using FastCSharp.Publisher;
 using FastCSharp.RabbitPublisher.Common;
+using FastCSharp.RabbitPublisher.Impl;
+using Microsoft.Extensions.Options;
 using Microsoft.OpenApi.Models;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -117,11 +119,8 @@ app.MapPost($"{context}/Fantout/SendMessage", (
         IRabbitPublisher<Message> publisher) =>
     {
         publisher.ForExchange("FANOUT_EXCHANGE");
-        var msgArray = request.Message?.Split(";");
-        var msgs = msgArray?.Select(m => new Message { Text = m });
-        msgs ??= new List<Message> { new() { Text = "Hello World" } };
-        return Send(request, msgs.Count(), async () => {
-            return await publisher.Publish(msgs.First());
+        return Send2(request, 1, async () => {
+            return await publisher.Publish(new Message { Text = request.Message });
         });
     });
 
@@ -133,35 +132,111 @@ app.MapPost($"{context}/Fantout/SendBatch", (
     var msgArray = request.Message?.Split(";");
     var msgs = msgArray?.Select(m => new Message { Text = m });
     msgs ??= new List<Message> { new() { Text = "Hello World" } };
-    return Send(request, msgs.Count(), async () => {
+    return Send2(request, msgs.Count(), async () => {
         return await publisher.Publish(msgs);
     });
 });
 
 app.MapPost($"{context}/Load/SendMessage", (
-        LoadRequest request, 
-        IRabbitPublisher<Message> publisher
+        LoadRequest request,
+        IRabbitConnectionPool connectionPool,
+        ILoggerFactory loggerFactory,
+        IOptions<RabbitPublisherConfig> config
     ) =>
     {
-        var msgArray = request.Message?.Split(";");
-        var msgs = msgArray?.Select(m => new Message { Text = m });
-        msgs ??= new List<Message> { new() { Text = "Hello World" } };
-
-        return Send(request, msgs.Count(), async () => {
-            publisher = request.ExchangeType switch
-            {
-                "direct" => publisher.ForExchange("DIRECT_EXCHANGE").ForQueue("TEST_QUEUE"),
-                "topic" =>  publisher.ForExchange("TOPIC_EXCHANGE").ForRouting("topic.1"),
-                "fanout" => publisher.ForExchange("FANOUT_EXCHANGE"),
-                _ => null,
-            } ?? throw new Exception($"Publisher not found for {request.ExchangeType}");
-            return request.IsBatch ? await publisher.Publish(msgs) : await publisher.Publish(msgs.First());
-        });
+        return Send(request, connectionPool, loggerFactory, config); 
     })
     .WithName($"Single for {context}")
     .WithDisplayName(displayName);
 
-static IResult Send(LoadRequest request, int msgCount, Func<Task<bool>> Publish)
+static IResult Send(LoadRequest request, 
+        IRabbitConnectionPool connectionPool, 
+        ILoggerFactory loggerFactory,
+        IOptions<RabbitPublisherConfig> config) 
+{
+    ConcurrentDictionary<int, Stats> stats = new();
+    List<Thread> threads = new();
+
+    int idx = 0;
+
+    for (int i = 0; i < request.Threads; ++i)
+    {
+        var t = new Thread(() =>
+        {
+            Stats stat = new();
+            int k = Interlocked.Increment(ref idx);
+            stats.TryAdd(k, stat);
+
+            IRabbitPublisher<Message> publisher = new RabbitPublisher<Message>(connectionPool, loggerFactory, config);
+
+            for (int j = 0; j < request.NumberOfRequests; j++)
+            {
+                Stopwatch sw = new();
+                sw.Start();
+
+                string threadName = $"{Thread.CurrentThread.Name} ({Thread.CurrentThread.GetHashCode()}/{ThreadPool.ThreadCount})";
+
+                var msgArray = request.Message?.Split(";");
+                var msgs = msgArray?.Select(m => new Message { Text = m });
+                msgs ??= new List<Message> { new() { Text = "Hello World" } };
+
+                publisher = request.ExchangeType switch
+                {
+                    "direct" => publisher.ForExchange("DIRECT_EXCHANGE").ForQueue("TEST_QUEUE"),
+                    "topic" =>  publisher.ForExchange("TOPIC_EXCHANGE").ForRouting("topic.1"),
+                    "fanout" => publisher.ForExchange("FANOUT_EXCHANGE"),
+                    _ => null,
+                } ?? throw new Exception($"Publisher not found for {request.ExchangeType}");
+                Task<bool> task = request.IsBatch ? publisher.Publish(msgs) : publisher.Publish(new Message { Text = request.Message });
+
+                task.Wait();
+                
+                if (task.IsCompletedSuccessfully && task.Result)
+                {
+                    stat.Success++;
+                }
+                else
+                {
+                    stat.Errors++;
+                }
+
+                sw.Stop();
+                stat.TotalCount += request.IsBatch ? msgs.Count() : 1;
+                stat.TotalTime += sw.Elapsed;
+                if (stat.MinTime > sw.Elapsed) stat.MinTime = sw.Elapsed;
+                if (stat.MaxTime < sw.Elapsed) stat.MaxTime = sw.Elapsed;
+                Thread.Sleep(request.LagMillisecond);
+            }
+        });
+        threads.Add(t);
+        t.Start();
+    }
+    while(threads.Count > 0)
+    {
+        Thread t = threads.First();
+        t.Join();
+        threads.Remove(t);
+        Console.WriteLine($"Thread {t.Name} finished");
+    }
+    Console.WriteLine($"ThreadPool final size {ThreadPool.ThreadCount} >> Load Test Finished!");
+    var totals = stats.Aggregate(
+        new Stats(),
+        (acc, i) =>
+        {
+            acc.TotalCount += i.Value.TotalCount;
+            acc.Errors += i.Value.Errors;
+            acc.Success += i.Value.Success;
+            if (acc.TotalTime < i.Value.TotalTime) acc.TotalTime = i.Value.TotalTime;
+            if (acc.MinTime > i.Value.MinTime) acc.MinTime = i.Value.MinTime;
+            if (acc.MaxTime < i.Value.MaxTime) acc.MaxTime = i.Value.MaxTime;
+            return acc;
+        });
+    stats.TryAdd(-1, totals);
+    return TypedResults.Ok(stats);
+}
+
+
+static IResult Send2(LoadRequest request, int msgCount, Func<Task<bool>> Publish)
 {
     ConcurrentDictionary<int, Stats> stats = new();
     List<Thread> threads = new();
@@ -188,13 +263,10 @@ static IResult Send(LoadRequest request, int msgCount, Func<Task<bool>> Publish)
                 
                 if (task.IsCompletedSuccessfully && task.Result)
                 {
-                    // Console.WriteLine($"publisher {threadName} >> Message Sent!");
                     stat.Success++;
                 }
                 else
                 {
-                    // Console.WriteLine($"publisher {threadName} >> Message not sent!");
-                    // Console.WriteLine(task.Exception);
                     stat.Errors++;
                 }
 
@@ -242,22 +314,25 @@ app.Run();
 
 public class LoadRequest
 {
-    // public string? VHost { get; set; }
     public string? Message { get; set; }
     public string? ExchangeType { get; set; }
     public bool IsBatch { get; set; }
     public int Threads { get; set; }
     public int LagMillisecond { get; set; }
     public int NumberOfRequests { get; set; }
+
 }
 
 public class Message
 {
+    private string? message;
+    static int _id = 0;
+    int id;
+    public string? Text { get => $"{message} - {id}"; set => message = value; }
     public Message()
     {
+        id = Interlocked.Increment(ref _id);
     }
-
-    public string? Text { get; set; }
 }
 
 public class Stats

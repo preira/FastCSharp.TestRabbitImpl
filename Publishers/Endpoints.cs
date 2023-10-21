@@ -4,14 +4,19 @@ using FastCSharp.RabbitPublisher.Impl;
 using FastCSharp.RabbitPublisher.Injection;
 
 namespace FastCSharp.RabbitPublisher.Test;
+
 public class Message
 {
+    private string? message;
+    static int _id = 0;
+    int id;
+    public string? Text { get => $"{message} - {id}"; set => message = value; }
     public Message()
     {
+        id = Interlocked.Increment(ref _id);
     }
-
-    public string? Text { get; set; }
 }
+
 public class Endpoints
 {
     readonly RabbitConnectionPool connectionPool;
