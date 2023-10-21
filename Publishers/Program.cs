@@ -176,7 +176,7 @@ static Func<LoadRequest, IResult> Load(RabbitConnectionPool pool, ILoggerFactory
             return acc;
         });
         stats.TryAdd(-1, totals);
-        return TypedResults.Ok(stats);
+        return Results.Ok(stats);
     };
 }
 

@@ -35,7 +35,6 @@ directSubscriber.Register(async (message) =>
         return await circuit.WrapAsync(async () =>
         {
             logger.LogInformation($"Received {message}");
-            throw new Exception("Test");
             return await Task.FromResult(true);
         });
     }
