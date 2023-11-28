@@ -26,10 +26,11 @@ services.AddSwaggerGen(c =>
 });
 
 // services.AddRabbitPublisher("rabbitsettings.CLUSTER.json");
-services.AddRabbitPublisher<string>("rabbitsettings.json");
-services.AddRabbitPublisher<Message>("rabbitsettings.json");
+services.AddRabbitPublisher<string>("rabbitsettings.CLUSTER.json");
+services.AddRabbitPublisher<Message>("rabbitsettings.CLUSTER.json");
 
 var app = builder.Build();
+
 app.UseRouting();
 // http://localhost:5106/swagger/v1/swagger.json
 app.UseSwagger();
@@ -39,7 +40,7 @@ app.UseSwaggerUI(c =>
     c.SwaggerEndpoint("/swagger/v1/swagger.json", "Fast Framework.Test API");
 });
 var context = "fastcsharp";
-var displayName = "Default VHost";
+var displayName = "Test API";
 app.MapGet($"{context}/Direct/SendMessage", async (string message, IRabbitPublisher<string> publisher) => 
     {
         
@@ -114,29 +115,6 @@ app.MapGet($"{context}/Fanout/SendMessage", async (string message, IRabbitPublis
     .WithName($"Fanout for {context}")
     .WithDisplayName(displayName);
 
-app.MapPost($"{context}/Fantout/SendMessage", (
-        LoadRequest request, 
-        IRabbitPublisher<Message> publisher) =>
-    {
-        publisher.ForExchange("FANOUT_EXCHANGE");
-        return Send2(request, 1, async () => {
-            return await publisher.Publish(new Message { Text = request.Message });
-        });
-    });
-
-app.MapPost($"{context}/Fantout/SendBatch", (
-        LoadRequest request, 
-        IRabbitPublisher<Message> publisher) =>
-{
-    publisher.ForExchange("FANOUT_EXCHANGE");
-    var msgArray = request.Message?.Split(";");
-    var msgs = msgArray?.Select(m => new Message { Text = m });
-    msgs ??= new List<Message> { new() { Text = "Hello World" } };
-    return Send2(request, msgs.Count(), async () => {
-        return await publisher.Publish(msgs);
-    });
-});
-
 app.MapPost($"{context}/Load/SendMessage", (
         LoadRequest request,
         IRabbitConnectionPool connectionPool,
@@ -146,8 +124,8 @@ app.MapPost($"{context}/Load/SendMessage", (
     {
         return Send(request, connectionPool, loggerFactory, config); 
     })
-    .WithName($"Single for {context}")
-    .WithDisplayName(displayName);
+    .WithName("Configurable Load Test Runner")
+    .WithDisplayName("Configurable Load Test Runner");
 
 static IResult Send(LoadRequest request, 
         IRabbitConnectionPool connectionPool, 
@@ -159,6 +137,17 @@ static IResult Send(LoadRequest request,
 
     int idx = 0;
 
+    IEnumerable<Message> msgs;
+    if (request.IsBatch)
+    {
+        var msgArray = request.Message?.Split(";");
+        msgs = msgArray?.Select(m => new Message { Text = m }) ?? new List<Message> { new() { Text = "Hello World" } };
+    }
+    else
+    {
+        msgs = new List<Message> { new() { Text = request.Message } };
+    }
+
     for (int i = 0; i < request.Threads; ++i)
     {
         var t = new Thread(() =>
@@ -169,16 +158,12 @@ static IResult Send(LoadRequest request,
 
             IRabbitPublisher<Message> publisher = new RabbitPublisher<Message>(connectionPool, loggerFactory, config);
 
+            Stopwatch sw = new();
             for (int j = 0; j < request.NumberOfRequests; j++)
             {
-                Stopwatch sw = new();
-                sw.Start();
+                sw.Restart();
 
                 string threadName = $"{Thread.CurrentThread.Name} ({Thread.CurrentThread.GetHashCode()}/{ThreadPool.ThreadCount})";
-
-                var msgArray = request.Message?.Split(";");
-                var msgs = msgArray?.Select(m => new Message { Text = m });
-                msgs ??= new List<Message> { new() { Text = "Hello World" } };
 
                 publisher = request.ExchangeType switch
                 {
@@ -187,92 +172,31 @@ static IResult Send(LoadRequest request,
                     "fanout" => publisher.ForExchange("FANOUT_EXCHANGE"),
                     _ => null,
                 } ?? throw new Exception($"Publisher not found for {request.ExchangeType}");
-                Task<bool> task = request.IsBatch ? publisher.Publish(msgs) : publisher.Publish(new Message { Text = request.Message });
 
-                task.Wait();
+                Task<bool> task = request.IsBatch ? 
+                    publisher.Publish(msgs) : publisher.Publish(msgs.First());
+
+                try
+                {
+                    task.Wait();
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Error publishing Message {msgs.First().Text} sent to {publisher.GetType().Name} - {ex.Message}");
+                }
+                sw.Stop();
+                stat.TotalTime += sw.Elapsed;
                 
                 if (task.IsCompletedSuccessfully && task.Result)
                 {
-                    stat.Success++;
+                    stat.Success += msgs.Count();
                 }
                 else
                 {
                     stat.Errors++;
                 }
 
-                sw.Stop();
-                stat.TotalCount += request.IsBatch ? msgs.Count() : 1;
-                stat.TotalTime += sw.Elapsed;
-                if (stat.MinTime > sw.Elapsed) stat.MinTime = sw.Elapsed;
-                if (stat.MaxTime < sw.Elapsed) stat.MaxTime = sw.Elapsed;
-                Thread.Sleep(request.LagMillisecond);
-            }
-        });
-        threads.Add(t);
-        t.Start();
-    }
-    while(threads.Count > 0)
-    {
-        Thread t = threads.First();
-        t.Join();
-        threads.Remove(t);
-        Console.WriteLine($"Thread {t.Name} finished");
-    }
-    Console.WriteLine($"ThreadPool final size {ThreadPool.ThreadCount} >> Load Test Finished!");
-    var totals = stats.Aggregate(
-        new Stats(),
-        (acc, i) =>
-        {
-            acc.TotalCount += i.Value.TotalCount;
-            acc.Errors += i.Value.Errors;
-            acc.Success += i.Value.Success;
-            if (acc.TotalTime < i.Value.TotalTime) acc.TotalTime = i.Value.TotalTime;
-            if (acc.MinTime > i.Value.MinTime) acc.MinTime = i.Value.MinTime;
-            if (acc.MaxTime < i.Value.MaxTime) acc.MaxTime = i.Value.MaxTime;
-            return acc;
-        });
-    stats.TryAdd(-1, totals);
-    return TypedResults.Ok(stats);
-}
-
-
-static IResult Send2(LoadRequest request, int msgCount, Func<Task<bool>> Publish)
-{
-    ConcurrentDictionary<int, Stats> stats = new();
-    List<Thread> threads = new();
-
-    int idx = 0;
-
-    for (int i = 0; i < request.Threads; ++i)
-    {
-        var t = new Thread(() =>
-        {
-            Stats stat = new();
-            int k = Interlocked.Increment(ref idx);
-            stats.TryAdd(k, stat);
-
-            for (int j = 0; j < request.NumberOfRequests; j++)
-            {
-                Stopwatch sw = new();
-                sw.Start();
-
-                string threadName = $"{Thread.CurrentThread.Name} ({Thread.CurrentThread.GetHashCode()}/{ThreadPool.ThreadCount})";
-
-                Task<bool> task = Publish();
-                task.Wait();
-                
-                if (task.IsCompletedSuccessfully && task.Result)
-                {
-                    stat.Success++;
-                }
-                else
-                {
-                    stat.Errors++;
-                }
-
-                sw.Stop();
-                stat.TotalCount += msgCount;
-                stat.TotalTime += sw.Elapsed;
+                stat.TotalCount += msgs.Count();
                 if (stat.MinTime > sw.Elapsed) stat.MinTime = sw.Elapsed;
                 if (stat.MaxTime < sw.Elapsed) stat.MaxTime = sw.Elapsed;
                 Thread.Sleep(request.LagMillisecond);
@@ -312,8 +236,19 @@ app.MapGet($"{context}/Pool/Statistics",
 
 app.Run();
 
+/// <summary>
+/// The configuration for the Load Test Runner
+/// </summary> <summary>
+/// 
+/// </summary>
 public class LoadRequest
 {
+    /// <summary>
+    /// The Message to send
+    /// </summary> <summary>
+    /// 
+    /// </summary>
+    /// <value></value>
     public string? Message { get; set; }
     public string? ExchangeType { get; set; }
     public bool IsBatch { get; set; }

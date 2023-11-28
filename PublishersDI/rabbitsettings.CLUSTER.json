@@ -2,13 +2,22 @@
     "RabbitPublisherConfig" : {
         "ClientName" : "FastCSharp Publisher",
         "Hosts" : [
-            {"HostName":"localhost", "Port":5671},
+            {"HostName":"google.com", "Port":5671},
+            {"HostName":"sada", "Port":5672},
+            {"HostName":"rte", "Port":5672},
             {"HostName":"localhost", "Port":5672}
         ],
         "VirtualHost": "test-vhost",
         "UserName"  : "guest",
         "Password"  : "guest",
         "Timeout" : "00:00:10",
+        "Pool" : {
+            "minSize" : 5,
+            "maxSize" : 10,
+            "initialize" : true,
+            "gatherStats" : true,
+            "defaultWaitTimeout" : "00:00:01"
+        },
         "Exchanges" : 
         {
             "DIRECT_EXCHANGE" : {
