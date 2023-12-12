@@ -7,7 +7,7 @@ builder.Services.AddRabbitPublisher<string>(builder.Configuration);
 var app = builder.Build();
 
 
-app.MapGet("/", async (string message, IRabbitPublisher<string> publisher) => {
+app.MapGet("/", async (string message, IPublisher<string> publisher) => {
     return await publisher.ForExchange("DIRECT_EXCHANGE").Publish(message);
 });
 

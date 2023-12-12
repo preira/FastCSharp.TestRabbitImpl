@@ -1,3 +1,4 @@
+
 using FastCSharp.Publisher;
 using FastCSharp.RabbitPublisher.Common;
 using FastCSharp.RabbitPublisher.Impl;
@@ -64,33 +65,33 @@ public class Endpoints
 
     async Task<IResult> DirectPublish(string? message)
     {
-        IRabbitPublisher<Message> publisher = new RabbitPublisher<Message>(connectionPool, loggerFactory, publisherConfig);
+        IPublisher<Message> publisher = new RabbitPublisher<Message>(connectionPool, loggerFactory, publisherConfig);
         publisher.ForExchange("DIRECT_EXCHANGE").ForQueue("TEST_QUEUE");
         return await Publish(message, publisher);
     }
 
     async Task<IResult> Topic1Publish(string? message)
     {
-        IRabbitPublisher<Message> publisher = new RabbitPublisher<Message>(connectionPool, loggerFactory, publisherConfig);
+        IPublisher<Message> publisher = new RabbitPublisher<Message>(connectionPool, loggerFactory, publisherConfig);
         publisher.ForExchange("TOPIC_EXCHANGE").ForRouting("topic.1");
         return await Publish(message, publisher);
     }
 
     async Task<IResult> Topic2Publish(string? message)
     {
-        IRabbitPublisher<Message> publisher = new RabbitPublisher<Message>(connectionPool, loggerFactory, publisherConfig);
+        IPublisher<Message> publisher = new RabbitPublisher<Message>(connectionPool, loggerFactory, publisherConfig);
         publisher.ForExchange("TOPIC_EXCHANGE").ForRouting("topic.2");
         return await Publish(message, publisher);
     }
 
     async Task<IResult> FanoutPublish(string? message)
     {
-        IRabbitPublisher<Message> publisher = new RabbitPublisher<Message>(connectionPool, loggerFactory, publisherConfig);
+        IPublisher<Message> publisher = new RabbitPublisher<Message>(connectionPool, loggerFactory, publisherConfig);
         publisher.ForExchange("FANOUT_EXCHANGE");
         return await Publish(message, publisher);
     }
 
-    async Task<IResult> Publish(string? message, IRabbitPublisher<Message> publisher)
+    async Task<IResult> Publish(string? message, IPublisher<Message> publisher)
     {
         if (batch)
             return await BatchPublish(message, publisher);
@@ -98,7 +99,7 @@ public class Endpoints
         return await SinglePublish(message, publisher);
     }
 
-    async Task<IResult> SinglePublish(string? message, IRabbitPublisher<Message> publisher)
+    async Task<IResult> SinglePublish(string? message, IPublisher<Message> publisher)
     {
         var m = new Message();
         m.Text = message;
@@ -106,7 +107,7 @@ public class Endpoints
         return Results.Accepted("");
     }
     
-    async Task<IResult> BatchPublish(string? message, IRabbitPublisher<Message> publisher)
+    async Task<IResult> BatchPublish(string? message, IPublisher<Message> publisher)
     {
         var msgArray = message?.Split(";");
         if (msgArray?.Length > 0)

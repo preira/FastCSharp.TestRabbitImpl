@@ -40,7 +40,7 @@ app.UseSwaggerUI(c =>
 });
 var context = "fastcsharp";
 var displayName = "Default VHost";
-app.MapGet($"{context}/Direct/SendMessage", async (string message, IRabbitPublisher<string> publisher) => 
+app.MapGet($"{context}/Direct/SendMessage", async (string message, IPublisher<string> publisher) => 
     {
         
         var result = await publisher.ForExchange("DIRECT_EXCHANGE").ForQueue("TEST_QUEUE").Publish(message);
@@ -59,7 +59,7 @@ app.MapGet($"{context}/Direct/SendMessage", async (string message, IRabbitPublis
     .WithDisplayName(displayName);
 
 // http://localhost:5106/Topic/topic.1/SendMessage?message=Hello%20World
-app.MapGet($"{context}/Topic/topic.q.1/SendMessage", async (string message, IRabbitPublisher<string> publisher) => 
+app.MapGet($"{context}/Topic/topic.q.1/SendMessage", async (string message, IPublisher<string> publisher) => 
     {
         
         var result = await publisher.ForExchange("TOPIC_EXCHANGE").ForRouting("topic.1").Publish(message);
@@ -78,7 +78,7 @@ app.MapGet($"{context}/Topic/topic.q.1/SendMessage", async (string message, IRab
     .WithDisplayName(displayName);
 
 // http://localhost:5106/Topic/topic.2/SendMessage?message=Hello%20World
-app.MapGet($"{context}/Topic/topic.q.2/SendMessage", async (string message, IRabbitPublisher<string> publisher) => 
+app.MapGet($"{context}/Topic/topic.q.2/SendMessage", async (string message, IPublisher<string> publisher) => 
     {
         var result = await publisher.ForExchange("TOPIC_EXCHANGE").ForRouting("topic.2").Publish(message);
         if(result)
@@ -96,7 +96,7 @@ app.MapGet($"{context}/Topic/topic.q.2/SendMessage", async (string message, IRab
     .WithDisplayName(displayName);
 
 // http://localhost:5106/Fanout/SendMessage?message=Hello%20World
-app.MapGet($"{context}/Fanout/SendMessage", async (string message, IRabbitPublisher<string> publisher) => 
+app.MapGet($"{context}/Fanout/SendMessage", async (string message, IPublisher<string> publisher) => 
     {
         publisher.ForExchange("FANOUT_EXCHANGE");
         var result = await publisher.Publish(message);
@@ -114,9 +114,25 @@ app.MapGet($"{context}/Fanout/SendMessage", async (string message, IRabbitPublis
     .WithName($"Fanout for {context}")
     .WithDisplayName(displayName);
 
+// http://localhost:5106/Fanout/SendMessage?message=Hello%20World
+app.MapGet($"{context}/HealthReport", (IPublisher<string> publisher) => 
+    {
+        return publisher.ReportHealthStatus();
+    })
+    .WithName($"Health Check Report")
+    .WithDisplayName("Health Check Report");
+
+// http://localhost:5106/Fanout/SendMessage?message=Hello%20World
+app.MapGet($"{context}/HealthReport/Summarized", async (IPublisher<string> publisher) => 
+    {
+        return (await publisher.ReportHealthStatus()).Summarize();
+    })
+    .WithName($"Sumarized Health Check Report")
+    .WithDisplayName("Health Check Report");
+
 app.MapPost($"{context}/Fantout/SendMessage", (
         LoadRequest request, 
-        IRabbitPublisher<Message> publisher) =>
+        IPublisher<Message> publisher) =>
     {
         publisher.ForExchange("FANOUT_EXCHANGE");
         return Send2(request, 1, async () => {
@@ -126,7 +142,7 @@ app.MapPost($"{context}/Fantout/SendMessage", (
 
 app.MapPost($"{context}/Fantout/SendBatch", (
         LoadRequest request, 
-        IRabbitPublisher<Message> publisher) =>
+        IPublisher<Message> publisher) =>
 {
     publisher.ForExchange("FANOUT_EXCHANGE");
     var msgArray = request.Message?.Split(";");
@@ -167,7 +183,7 @@ static IResult Send(LoadRequest request,
             int k = Interlocked.Increment(ref idx);
             stats.TryAdd(k, stat);
 
-            IRabbitPublisher<Message> publisher = new RabbitPublisher<Message>(connectionPool, loggerFactory, config);
+            IPublisher<Message> publisher = new RabbitPublisher<Message>(connectionPool, loggerFactory, config);
 
             for (int j = 0; j < request.NumberOfRequests; j++)
             {

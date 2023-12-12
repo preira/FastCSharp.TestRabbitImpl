@@ -89,7 +89,7 @@ static Func<LoadRequest, IResult> Load(RabbitConnectionPool pool, ILoggerFactory
         {
             var t = new Thread(() =>
             {
-                using IRabbitPublisher<Message> publisher = new RabbitPublisher<Message>(pool, loggerFactory, options);
+                using IPublisher<Message> publisher = new RabbitPublisher<Message>(pool, loggerFactory, options);
                 publisher.ForExchange("DIRECT_EXCHANGE").ForQueue("TEST_QUEUE");
                 // return await Publish(message, publisher);
 
