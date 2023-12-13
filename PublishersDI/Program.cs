@@ -40,13 +40,8 @@ app.UseSwaggerUI(c =>
     c.SwaggerEndpoint("/swagger/v1/swagger.json", "Fast Framework.Test API");
 });
 var context = "fastcsharp";
-<<<<<<< HEAD
 var displayName = "Default VHost";
 app.MapGet($"{context}/Direct/SendMessage", async (string message, IPublisher<string> publisher) => 
-=======
-var displayName = "Test API";
-app.MapGet($"{context}/Direct/SendMessage", async (string message, IRabbitPublisher<string> publisher) => 
->>>>>>> 2226ea24328483efe531c984f7335db183f82eac
     {
         
         var result = await publisher.ForExchange("DIRECT_EXCHANGE").ForQueue("TEST_QUEUE").Publish(message);
@@ -120,7 +115,6 @@ app.MapGet($"{context}/Fanout/SendMessage", async (string message, IPublisher<st
     .WithName($"Fanout for {context}")
     .WithDisplayName(displayName);
 
-<<<<<<< HEAD
 // http://localhost:5106/Fanout/SendMessage?message=Hello%20World
 app.MapGet($"{context}/HealthReport", (IPublisher<string> publisher) => 
     {
@@ -137,31 +131,6 @@ app.MapGet($"{context}/HealthReport/Summarized", async (IPublisher<string> publi
     .WithName($"Sumarized Health Check Report")
     .WithDisplayName("Health Check Report");
 
-app.MapPost($"{context}/Fantout/SendMessage", (
-        LoadRequest request, 
-        IPublisher<Message> publisher) =>
-    {
-        publisher.ForExchange("FANOUT_EXCHANGE");
-        return Send2(request, 1, async () => {
-            return await publisher.Publish(new Message { Text = request.Message });
-        });
-    });
-
-app.MapPost($"{context}/Fantout/SendBatch", (
-        LoadRequest request, 
-        IPublisher<Message> publisher) =>
-{
-    publisher.ForExchange("FANOUT_EXCHANGE");
-    var msgArray = request.Message?.Split(";");
-    var msgs = msgArray?.Select(m => new Message { Text = m });
-    msgs ??= new List<Message> { new() { Text = "Hello World" } };
-    return Send2(request, msgs.Count(), async () => {
-        return await publisher.Publish(msgs);
-    });
-});
-
-=======
->>>>>>> 2226ea24328483efe531c984f7335db183f82eac
 app.MapPost($"{context}/Load/SendMessage", (
         LoadRequest request,
         IRabbitConnectionPool connectionPool,
