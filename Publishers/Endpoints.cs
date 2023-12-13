@@ -104,7 +104,7 @@ public class Endpoints
         var m = new Message();
         m.Text = message;
         await publisher.Publish(m);
-        return Results.Accepted("");
+        return TypedResults.Accepted("");
     }
     
     async Task<IResult> BatchPublish(string? message, IPublisher<Message> publisher)
@@ -120,8 +120,8 @@ public class Endpoints
                 msgs.Add(m);
             }
             await publisher.Publish(msgs);
-            return Results.Accepted("");
+            return TypedResults.Accepted("");
         }
-        return Results.BadRequest(message);
+        return TypedResults.BadRequest(message);
     }
 }

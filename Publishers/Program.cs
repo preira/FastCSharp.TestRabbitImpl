@@ -58,9 +58,9 @@ section.Bind(options.Value);
 
 var connectionPool = new RabbitConnectionPool(options.Value, loggerFactory);
 
-app.MapPost("Load/SendMessage", Load(connectionPool, loggerFactory, options.Value))
-    .WithName("Load Test")
-    .WithDisplayName("Load Test")
+app.MapPost("Load/Send", Load(connectionPool, loggerFactory, options.Value))
+    .WithName("Configurable Test Runner")
+    .WithDisplayName("Configurable Test Runner")
     .Produces(StatusCodes.Status200OK)
     .Accepts<LoadRequest>(MediaTypeNames.Application.Json)
     ;
@@ -116,32 +116,33 @@ static Func<LoadRequest, IResult> Load(RabbitConnectionPool pool, ILoggerFactory
                 int k = Interlocked.Increment(ref idx);
                 stats.TryAdd(k, stat);
 
+                Stopwatch sw = new();
                 for (int j = 0; j < request.NumberOfRequests; j++)
                 {
-                    Stopwatch sw = new();
-                    sw.Start();
+                    sw.Restart();
+                    Task<bool> task = request.IsBatch ? 
+                        publisher.Publish(msgs) : publisher.Publish(msgs.First());
                     try
                     {
-                        Task task;
-                        if (request.IsBatch)
-                        {
-                            task = publisher.Publish(msgs);
-                        }
-                        else
-                        {
-                            task = publisher.Publish(msgs.First());
-                        }
                         task.Wait();
-                        stat.Success++;
                     }
                     catch (Exception ex)
                     {
-                        Console.WriteLine(ex);
-                        stat.Errors++;
+                        Console.WriteLine($"Error publishing Message {msgs.First().Text} sent to {publisher.GetType().Name} - {ex.Message}");
                     }
                     sw.Stop();
-                    stat.TotalCount += msgs.Count();
                     stat.TotalTime += sw.Elapsed;
+
+                    if (task.IsCompletedSuccessfully && task.Result)
+                    {
+                        stat.Success += msgs.Count();
+                    }
+                    else
+                    {
+                        stat.Errors++;
+                    }
+
+                    stat.TotalCount += msgs.Count();
                     if (stat.MinTime > sw.Elapsed) stat.MinTime = sw.Elapsed;
                     if (stat.MaxTime < sw.Elapsed) stat.MaxTime = sw.Elapsed;
                     Thread.Sleep(request.LagMillisecond);
@@ -176,7 +177,7 @@ static Func<LoadRequest, IResult> Load(RabbitConnectionPool pool, ILoggerFactory
             return acc;
         });
         stats.TryAdd(-1, totals);
-        return Results.Ok(stats);
+        return TypedResults.Ok(stats);
     };
 }
 

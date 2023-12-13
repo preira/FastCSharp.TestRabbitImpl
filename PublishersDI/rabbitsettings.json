@@ -10,7 +10,7 @@
         "Pool" : {
             "minSize" : 5,
             "maxSize" : 10,
-            "initialize" : false ,
+            "initialize" : true,
             "gatherStats" : true,
             "defaultWaitTimeout" : "00:00:01"
         },
