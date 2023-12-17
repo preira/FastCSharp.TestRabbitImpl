@@ -242,11 +242,11 @@ static IResult Send(LoadRequest request,
             return acc;
         });
     stats.TryAdd(-1, totals);
-    return TypedResults.Ok(stats);
+    return Results.Ok(stats);
 }
 
 app.MapGet($"{context}/Pool/Statistics", 
-    (IRabbitConnectionPool connectionPool) => TypedResults.Ok(connectionPool.Stats))
+    (IRabbitConnectionPool connectionPool) => Results.Ok(connectionPool.Stats))
     .WithName($"Pool Stats")
     .WithDisplayName("Stats");
 
