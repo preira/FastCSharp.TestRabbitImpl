@@ -16,7 +16,7 @@ var connectionPool = new RabbitConnectionPool(config, loggerFactory);
 var app = builder.Build();
 
 app.MapGet("/", async (string message) => {
-    IRabbitPublisher<string> publisher = new RabbitPublisher<string>(connectionPool, loggerFactory, config);
+    IPublisher<string> publisher = new RabbitPublisher<string>(connectionPool, loggerFactory, config);
     return await publisher.ForExchange("DIRECT_EXCHANGE").Publish(message);
 });
 
