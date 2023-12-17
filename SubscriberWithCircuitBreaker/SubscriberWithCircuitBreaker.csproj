@@ -6,12 +6,9 @@
     </None>
   </ItemGroup>
 
- <ItemGroup>
-    <ProjectReference Include="..\..\FastCSharp\CircuitBreaker\CircuitBreaker.csproj" />
-    <ProjectReference Include="..\..\FastCSharp\RabbitSubscriber\RabbitSubscriber.csproj" />
-  </ItemGroup>
-
   <ItemGroup>
+    <PackageReference Include="FastCSharp.CircuitBreaker" Version="1.0.0" />
+    <PackageReference Include="FastCSharp.RabbitSubscriber" Version="2.0.0" />
     <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="8.0.0" />
     <PackageReference Include="Microsoft.Extensions.Logging.Console" Version="8.0.0" />
   </ItemGroup>
