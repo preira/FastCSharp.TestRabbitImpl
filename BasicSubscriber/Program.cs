@@ -10,7 +10,7 @@ IConfiguration defaultConfiguration = new ConfigurationBuilder()
     .Build();
 
 var circuit = new EventDrivenCircuitBreaker(
-    new ConsecutiveFailuresBreakerStrategy(
+    new FailuresThresholdBreakerStrategy(
         5, 
         new FixedBackoff(new TimeSpan(0, 0, 0, 5))));
 
