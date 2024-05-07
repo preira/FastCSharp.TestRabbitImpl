@@ -14,11 +14,14 @@ IConfiguration defaultConfiguration = new ConfigurationBuilder()
 
 // Encapsulate the following into a builder method returning a subscriber.
 var subscriberFactory = new RabbitSubscriberFactory(defaultConfiguration, loggerFactory);
-using var directSubscriber = subscriberFactory.NewSubscriber<string>("DIRECT_QUEUE");
+using var subscriber = subscriberFactory.NewSubscriber<string>("DIRECT_QUEUE");
 
-var  wrappedOnMessage = CircuitBreakerFactory.NewAsyncBreaker<string?, bool>(
-    loggerFactory,
-    directSubscriber.Options,
+
+var builder = CircuitBreakerFactory.CreateBuilder<string?, bool>();
+builder
+    .Set(loggerFactory)
+    .Set(subscriber.Options)
+    .Set(
     async (message) =>
     {
         logger.LogInformation($"Received '{message}'.");
@@ -27,26 +30,31 @@ var  wrappedOnMessage = CircuitBreakerFactory.NewAsyncBreaker<string?, bool>(
         logger.LogInformation($"'{message}' message processed.");
         printHelpMessage();
         return await Task.FromResult(!RemoteControl.Fail);
-    },
+            }
+    )
+    .OnOpen(
     (sender) =>
     {
         logger.LogInformation("Circuit is open");
-        directSubscriber.UnSubscribe();
+            subscriber.UnSubscribe();
         printHelpMessage();
-    },
+        }
+    )
+    .OnClose(
     (sender) =>
     {
         logger.LogInformation("Circuit is reset");
-        directSubscriber.Reset();
+            subscriber.Reset();
         printHelpMessage();
     }
-);
+    )
+    .Build();
 
-directSubscriber.Register(async (message) =>
+subscriber.Register(async (message) =>
 {
     try
     {
-        return await wrappedOnMessage(message);
+        return await builder.WrappedCircuit(message);
     }
     catch (Exception)
     {
@@ -55,6 +63,20 @@ directSubscriber.Register(async (message) =>
         return false;
     }
 });
+
+CancellationTokenSource cts = new CancellationTokenSource();
+// This way it will run in a thread from the thread pool.
+var watchDogTask = Task.Run(() => {
+    while (!cts.IsCancellationRequested)
+    {
+        if(!subscriber.IsHealthy)
+        {
+            subscriber.Reset();
+        }
+        Task.Delay(5000).Wait();
+    }
+});
+
 
 // Demo control
 
@@ -68,6 +90,9 @@ do
     input = Console.ReadLine();
     RemoteControl.Fail = !RemoteControl.Fail;
 } while ("q" != input);
+
+cts.Cancel();
+await watchDogTask;
 logger.LogInformation(" PEACEFULY EXITING.");
 
 public class RemoteControl
