@@ -31,6 +31,13 @@ services.AddRabbitPublisher<Message>("rabbitsettings.CLUSTER.json");
 
 var app = builder.Build();
 
+
+
+// TODO: Warmup the connection pool
+_ = app.Services.GetRequiredService<IRabbitConnectionPool>();
+
+
+
 app.UseRouting();
 // http://localhost:5106/swagger/v1/swagger.json
 app.UseSwagger();
@@ -41,10 +48,11 @@ app.UseSwaggerUI(c =>
 });
 var context = "fastcsharp";
 var displayName = "Default VHost";
-app.MapGet($"{context}/Direct/SendMessage", async (string message, IPublisher<string> publisher) => 
+app.MapGet($"{context}/Direct/SendMessage", async (string message, IAsyncPublisher<Message> publisher) => 
     {
-        
-        var result = await publisher.ForExchange("DIRECT_EXCHANGE").ForQueue("TEST_QUEUE").Publish(message);
+
+        var msg = new Message { Text = message };
+        var result = await publisher.ForExchange("DIRECT_EXCHANGE").ForQueue("TEST_QUEUE").PublishAsync(msg);
         if(result)
         {
             // Console.WriteLine($"Message {message} sent to {publisher.GetType().Name}");
@@ -60,10 +68,11 @@ app.MapGet($"{context}/Direct/SendMessage", async (string message, IPublisher<st
     .WithDisplayName(displayName);
 
 // http://localhost:5106/Topic/topic.1/SendMessage?message=Hello%20World
-app.MapGet($"{context}/Topic/topic.q.1/SendMessage", async (string message, IPublisher<string> publisher) => 
+app.MapGet($"{context}/Topic/topic.q.1/SendMessage", async (string message, IAsyncPublisher<Message> publisher) => 
     {
+        var msg = new Message { Text = message };
         
-        var result = await publisher.ForExchange("TOPIC_EXCHANGE").ForRouting("topic.1").Publish(message);
+        var result = await publisher.ForExchange("TOPIC_EXCHANGE").ForRouting("test.topic.q.1").PublishAsync(msg);
         if(result)
         {
             // Console.WriteLine($"Message {message} sent to {publisher.GetType().Name}");
@@ -79,9 +88,10 @@ app.MapGet($"{context}/Topic/topic.q.1/SendMessage", async (string message, IPub
     .WithDisplayName(displayName);
 
 // http://localhost:5106/Topic/topic.2/SendMessage?message=Hello%20World
-app.MapGet($"{context}/Topic/topic.q.2/SendMessage", async (string message, IPublisher<string> publisher) => 
+app.MapGet($"{context}/Topic/topic.q.2/SendMessage", async (string message, IAsyncPublisher<Message> publisher) => 
     {
-        var result = await publisher.ForExchange("TOPIC_EXCHANGE").ForRouting("topic.2").Publish(message);
+        var msg = new Message { Text = message };
+        var result = await publisher.ForExchange("TOPIC_EXCHANGE").ForRouting("test.topic.q.2").PublishAsync(msg);
         if(result)
         {
             // Console.WriteLine($"Message {message} sent to {publisher.GetType().Name}");
@@ -97,10 +107,11 @@ app.MapGet($"{context}/Topic/topic.q.2/SendMessage", async (string message, IPub
     .WithDisplayName(displayName);
 
 // http://localhost:5106/Fanout/SendMessage?message=Hello%20World
-app.MapGet($"{context}/Fanout/SendMessage", async (string message, IPublisher<string> publisher) => 
+app.MapGet($"{context}/Fanout/SendMessage", async (string message, IAsyncPublisher<Message> publisher) => 
     {
         publisher.ForExchange("FANOUT_EXCHANGE");
-        var result = await publisher.Publish(message);
+        var msg = new Message { Text = message };
+        var result = await publisher.PublishAsync(msg);
         if(result)
         {
             // Console.WriteLine($"Message {message} sent to {publisher.GetType().Name}");
@@ -116,17 +127,17 @@ app.MapGet($"{context}/Fanout/SendMessage", async (string message, IPublisher<st
     .WithDisplayName(displayName);
 
 // http://localhost:5106/Fanout/SendMessage?message=Hello%20World
-app.MapGet($"{context}/HealthReport", (IPublisher<string> publisher) => 
+app.MapGet($"{context}/HealthReport", async (IAsyncPublisher<string> publisher) => 
     {
-        return publisher.ReportHealthStatus();
+        return await publisher.ReportHealthStatusAsync();
     })
     .WithName($"Health Check Report")
     .WithDisplayName("Health Check Report");
 
 // http://localhost:5106/Fanout/SendMessage?message=Hello%20World
-app.MapGet($"{context}/HealthReport/Summarized", async (IPublisher<string> publisher) => 
+app.MapGet($"{context}/HealthReport/Summarized", async (IAsyncPublisher<string> publisher) => 
     {
-        return (await publisher.ReportHealthStatus()).Summarize();
+        return (await publisher.ReportHealthStatusAsync()).Summarize();
     })
     .WithName($"Sumarized Health Check Report")
     .WithDisplayName("Health Check Report");
@@ -172,25 +183,25 @@ static IResult Send(LoadRequest request,
             int k = Interlocked.Increment(ref idx);
             stats.TryAdd(k, stat);
 
-            IPublisher<Message> publisher = new RabbitPublisher<Message>(connectionPool, loggerFactory, config);
 
             Stopwatch sw = new();
             for (int j = 0; j < request.NumberOfRequests; j++)
             {
                 sw.Restart();
+                using AsyncRabbitPublisher<Message> publisher = new (connectionPool, loggerFactory, config);
 
                 string threadName = $"{Thread.CurrentThread.Name} ({Thread.CurrentThread.GetHashCode()}/{ThreadPool.ThreadCount})";
 
-                publisher = request.ExchangeType switch
+                var publisherForExchange = request.ExchangeType switch
                 {
                     "direct" => publisher.ForExchange("DIRECT_EXCHANGE").ForQueue("TEST_QUEUE"),
-                    "topic" =>  publisher.ForExchange("TOPIC_EXCHANGE").ForRouting("topic.1"),
+                    "topic" =>  publisher.ForExchange("TOPIC_EXCHANGE").ForRouting("test.topic.q.1"),
                     "fanout" => publisher.ForExchange("FANOUT_EXCHANGE"),
                     _ => null,
                 } ?? throw new Exception($"Publisher not found for {request.ExchangeType}");
 
                 Task<bool> task = request.IsBatch ? 
-                    publisher.Publish(msgs) : publisher.Publish(msgs.First());
+                    publisherForExchange.PublishAsync(msgs) : publisherForExchange.PublishAsync(msgs.First());
 
                 try
                 {
@@ -198,7 +209,7 @@ static IResult Send(LoadRequest request,
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"Error publishing Message {msgs.First().Text} sent to {publisher.GetType().Name} - {ex.Message}");
+                    Console.WriteLine($"Error publishing Message {msgs.First().Text} sent to {publisherForExchange.GetType().Name} - {ex.Message}");
                 }
                 sw.Stop();
                 stat.TotalTime += sw.Elapsed;

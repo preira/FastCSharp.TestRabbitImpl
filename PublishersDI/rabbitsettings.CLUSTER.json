@@ -13,7 +13,7 @@
         "Timeout" : "00:00:10",
         "Pool" : {
             "minSize" : 5,
-            "maxSize" : 10,
+            "maxSize" : 5,
             "initialize" : true,
             "gatherStats" : true,
             "defaultWaitTimeout" : "00:00:01"
